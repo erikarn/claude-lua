@@ -5,7 +5,7 @@ This requires some ports built bits
 
 $ pkg install lua54 lua54-luasocket lua54-luasec
 
-It also requires the lua-readline, http and cqueues packages, which
+It also requires the lua-readline, uuid, http and cqueues packages, which
 are only available via luarocks.
 
 However, cqueues has a bug on freebsd - see 
