@@ -22,7 +22,7 @@ local function run()
 	}
 
 	local stream = anthropic2.stream_messages(messages)
-	local state = { done = false, event = nil }
+	local state = anthropic2.get_init_state()
 
 	for line in stream:each_chunk() do
 		for single_line in (line .. "\n"):gmatch("([^\n]*)\n") do

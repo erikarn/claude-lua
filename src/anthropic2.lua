@@ -43,16 +43,16 @@ end
 -- SSE parser - Anthropic sends lines like:
 --   event: content_block_delta
 --   data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}
+--
+--
+
 function M.parse_sse_line(line, state)
     if line:match("^event:") then
         state.event = line:match("^event:%s*(.+)$")
 
     elseif line:match("^data:") then
         local data_str = line:match("^data:%s*(.+)$")
-        if data_str == "[DONE]" then
-            state.done = true
-            return
-        end
+        if data_str == "[DONE]" then state.done = true; return end
 
         local data, _, err = json.decode(data_str)
         if not data then
@@ -60,29 +60,88 @@ function M.parse_sse_line(line, state)
             return
         end
 
-        -- print text deltas as they arrive
-        if data.type == "content_block_delta"
-        and data.delta
-        and data.delta.type == "text_delta" then
-            io.write(data.delta.text)
-            io.flush()  -- important - force output immediately
+        if data.type == "message_start" then
+            local msg = data.message
+            state.message_id   = msg.id
+            state.model        = msg.model
+            state.input_tokens = msg.usage and msg.usage.input_tokens
+
+        elseif data.type == "content_block_start" then
+            state.current_index = data.index
+            state.block_type    = data.content_block.type
+            -- if type == "tool_use", capture tool name:
+            if data.content_block.type == "tool_use" then
+                state.tool_name = data.content_block.name
+                state.tool_id   = data.content_block.id
+                state.tool_json = ""  -- accumulate input_json_delta chunks
+            end
+
+        elseif data.type == "content_block_delta" then
+            local delta = data.delta
+            if delta.type == "text_delta" then
+                io.write(delta.text)
+                io.flush()
+            elseif delta.type == "input_json_delta" then
+                -- accumulate tool input JSON
+                state.tool_json = (state.tool_json or "") .. delta.partial_json
+            end
+
+        elseif data.type == "content_block_stop" then
+            if state.block_type == "tool_use" and state.tool_json then
+                -- tool input is now complete - parse and handle it
+                local tool_input = json.decode(state.tool_json)
+                state.pending_tool = {
+                    id    = state.tool_id,
+                    name  = state.tool_name,
+                    input = tool_input,
+                }
+                state.tool_json = nil
+            end
+
+        elseif data.type == "message_delta" then
+            state.stop_reason   = data.delta.stop_reason
+            state.output_tokens = data.usage and data.usage.output_tokens
+            if state.stop_reason == "tool_use" then
+                state.needs_tool = true
+            end
 
         elseif data.type == "message_stop" then
             state.done = true
 
-        elseif data.type == "message_start" then
-            -- contains model, usage info if you want it
-            print("[debug] model: " .. tostring(data.message.model))
-
         elseif data.type == "error" then
             io.stderr:write("stream error: " .. json.encode(data) .. "\n")
-            state.done = true
+            state.done  = true
+            state.error = data.error
         end
 
     elseif line == "" then
-        -- blank line = end of SSE event, reset event type
         state.event = nil
     end
+end
+
+function M.get_init_state()
+	local state = {
+	    done          = false,
+	    event         = nil,
+	    -- message metadata
+	    message_id    = nil,
+	    model         = nil,
+	    input_tokens  = nil,
+	    output_tokens = nil,
+	    stop_reason   = nil,
+	    -- content block tracking
+	    current_index = nil,
+	    block_type    = nil,
+	    -- tool use
+	    tool_name     = nil,
+	    tool_id       = nil,
+	    tool_json     = nil,
+	    pending_tool  = nil,
+	    needs_tool    = false,
+	    -- error
+	    error         = nil,
+	}
+	return state
 end
 
 return M
