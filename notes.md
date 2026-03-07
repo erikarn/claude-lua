@@ -5,13 +5,27 @@ This requires some ports built bits
 
 $ pkg install lua54 lua54-luasocket lua54-luasec
 
-It also requires the http and cqueues packages.
+It also requires the lua-readline, http and cqueues packages, which
+are only available via luarocks.
 
 However, cqueues has a bug on freebsd - see 
 https://github.com/wahern/cqueues/issue/266 for more details.
 
 # dkjson is a single .lua file - just download it
 fetch https://dkolf.de/dkjson/dkjson.lua
+
+lua-readline:
+
+The current rockspec (0.8-1) has a bug in its specification
+where it's fetching the wrong URL for the repository.
+
+I've opened two issues:
+
+ * https://github.com/motoprogger/lua-readline/issues/1 - source URL
+ * https://github.com/motoprogger/lua-readline/issues/2 - linking to readline
+
+experimenting
+=============
 
 To experiment:
 
