@@ -2,6 +2,7 @@
 
 local anthropic2 = require("anthropic2")
 local readline = require("readline")
+local uuid = require('uuid')
 
 -- readline.historyload(os.getenv("HOME") .. "/.claude_history")
 -- readline.historysetmaxlen(1000)
@@ -36,7 +37,19 @@ local function run_input(input)
 	end
 end
 
+local function set_rng_fn()
+	local bytes = {}
+	for i = 1, 16 do
+		bytes[i] = string.char(math.random(0,255))
+	end
+	return table.concat(bytes)
+end
+
 local function run()
+
+	uuid.set_rng(set_rng_fn)
+	local session_uuid = uuid()
+	print("Session: " .. session_uuid)
 
 	while true do
 		local input = readline.readline("> ")
