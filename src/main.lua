@@ -1,6 +1,10 @@
 -- main.lua
 
 local anthropic2 = require("anthropic2")
+local readline = require("readline")
+
+-- readline.historyload(os.getenv("HOME") .. "/.claude_history")
+-- readline.historysetmaxlen(1000)
 
 -- local messages = {
 --     { role = "user", content = "Explain the FreeBSD jail system in one paragraph." }
@@ -15,10 +19,9 @@ local anthropic2 = require("anthropic2")
 -- print(anthropic.get_text(response))
 --
 
-local function run()
-
+local function run_input(input)
 	local messages = {
-	    { role = "user", content = "Count slowly from 1 to 10, one number per line." }
+	    { role = "user", content = input },
 	}
 
 	local stream = anthropic2.stream_messages(messages)
@@ -30,6 +33,21 @@ local function run()
 			if state.done then break end
 		end
 		if state.done then break end
+	end
+end
+
+local function run()
+
+	while true do
+		local input = readline.readline("> ")
+		if input == nil then break end
+		input = input:match("^%s*(.-)%s*$")
+		if #input > 0 then
+			readline.addhistory(input)
+--			readline.historysave(os.getenv("HOME") .. "/.claude_history")
+			run_input(input)
+		end
+		print("\n====\n")
 	end
 
 end
