@@ -3,6 +3,7 @@
 local anthropic2 = require("anthropic2")
 local readline = require("readline")
 local uuid = require('uuid')
+local lfs = require('lfs')
 
 -- readline.historyload(os.getenv("HOME") .. "/.claude_history")
 -- readline.historysetmaxlen(1000)
@@ -19,6 +20,18 @@ local uuid = require('uuid')
 -- end
 -- print(anthropic.get_text(response))
 --
+
+local function open_log_file(session_uuid)
+	local bn = os.getenv("HOME") .. "/.claude_cli"
+	local dn = bn .. "/" .. session_uuid
+	local fn = dn .. "/" .. "session.txt"
+
+	lfs.mkdir(bn)
+	lfs.mkdir(dn)
+
+	local file = io.open(fn, "a+")
+	return file
+end
 
 local function run_input(input)
 	local messages = {
@@ -51,17 +64,26 @@ local function run()
 	local session_uuid = uuid()
 	print("Session: " .. session_uuid)
 
+	local log_file = open_log_file(session_uuid)
+
 	while true do
 		local input = readline.readline("> ")
 		if input == nil then break end
 		input = input:match("^%s*(.-)%s*$")
 		if #input > 0 then
 			readline.addhistory(input)
+			log_file:write("\n==\n")
+			log_file:write("INPUT:" .. input .. "\n==\n")
 --			readline.historysave(os.getenv("HOME") .. "/.claude_history")
+--
+--			-- TODO: log output
 			run_input(input)
 		end
+		log_file:flush()
 		print("\n====\n")
 	end
+
+	log_file:close()
 
 end
 
