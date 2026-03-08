@@ -4,6 +4,7 @@ local anthropic2 = require("anthropic2")
 local readline = require("readline")
 local uuid = require('uuid')
 local lfs = require('lfs')
+local clog = require('clog')
 
 -- readline.historyload(os.getenv("HOME") .. "/.claude_history")
 -- readline.historysetmaxlen(1000)
@@ -29,8 +30,12 @@ local function open_log_file(session_uuid)
 	lfs.mkdir(bn)
 	lfs.mkdir(dn)
 
-	local file = io.open(fn, "a+")
-	return file
+	local c = clog.create()
+
+	if not c:open(fn) then
+		return nil
+	end
+	return c
 end
 
 local function run_input(input)
@@ -66,17 +71,18 @@ local function run()
 
 	local log_file = open_log_file(session_uuid)
 
+	log_file:write_json( { start_timestamp = 1234 } );
+
 	while true do
 		local input = readline.readline("> ")
 		if input == nil then break end
 		input = input:match("^%s*(.-)%s*$")
 		if #input > 0 then
 			readline.addhistory(input)
-			log_file:write("\n==\n")
-			log_file:write("INPUT:" .. input .. "\n==\n")
+			log_file:write_json({ block = "input", input_str = input })
 --			readline.historysave(os.getenv("HOME") .. "/.claude_history")
 --
---			-- TODO: log output
+--			-- TODO: log output / intermediary steps
 			run_input(input)
 		end
 		log_file:flush()
