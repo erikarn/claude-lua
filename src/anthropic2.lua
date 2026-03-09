@@ -49,9 +49,11 @@ end
 function M.parse_sse_line(line, state)
     if line:match("^event:") then
         state.event = line:match("^event:%s*(.+)$")
+--	print("[DEBUG] state.event = " .. state.event)
 
     elseif line:match("^data:") then
         local data_str = line:match("^data:%s*(.+)$")
+--	print("[DEBUG] data: = " .. data_str)
         if data_str == "[DONE]" then state.done = true; return end
 
         local data, _, err = json.decode(data_str)
@@ -69,6 +71,11 @@ function M.parse_sse_line(line, state)
         elseif data.type == "content_block_start" then
             state.current_index = data.index
             state.block_type    = data.content_block.type
+	    -- if type == "text" then blank out the response text
+	    if data.content_block.type == "text" then
+		state.response_text = nil
+		state.response_set = false
+	    end
             -- if type == "tool_use", capture tool name:
             if data.content_block.type == "tool_use" then
                 state.tool_name = data.content_block.name
@@ -79,8 +86,8 @@ function M.parse_sse_line(line, state)
         elseif data.type == "content_block_delta" then
             local delta = data.delta
             if delta.type == "text_delta" then
-                io.write(delta.text)
-                io.flush()
+		state.response_text = (state.response_text or "") .. delta.text
+		state.response_set = true
             elseif delta.type == "input_json_delta" then
                 -- accumulate tool input JSON
                 state.tool_json = (state.tool_json or "") .. delta.partial_json
@@ -123,6 +130,8 @@ function M.get_init_state()
 	local state = {
 	    done          = false,
 	    event         = nil,
+	    response_text = nil,
+	    reponse_set   = false,
 	    -- message metadata
 	    message_id    = nil,
 	    model         = nil,

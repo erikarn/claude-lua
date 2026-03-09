@@ -82,3 +82,19 @@ message_stop
 {"type":"message_stop"}
 
 Stream is done. Clean up and close.
+
+Tools
+=====
+
+The tool list is provided upon every API call.  I haven't written
+anything here yet, but this does mean I can limit which tools it
+can choose from when deciding what to do next.
+
+
+Conversation flow
+=================
+
+The API is apparently state-less.  It looks like I'm required to send
+the whole conversation exchange history with roles switching between
+user and assistant.
+
