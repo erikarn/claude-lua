@@ -57,7 +57,11 @@ local function open_log_file(session_uuid)
 	return c
 end
 
-local function run_input(input)
+--
+-- Run the input, return a list of tools that need to be run and fed
+-- back into the API.
+--
+local function run_input(input_content, tool_request_list)
 	-- Assemble the messages with the history
 	local messages = {}
 
@@ -66,17 +70,18 @@ local function run_input(input)
 	-- from the user such as tool_result, text, image, etc.
 	-- I'll tackle that later.
 	--
-	for _, e in ipairs(session_history) do
---		print("[DEBUG] e: " .. require("dkjson").encode(e))
+	for i, e in ipairs(session_history) do
+		print("[DEBUG] [HISTORY] i: " .. tostring(i) .. " e: " .. require("dkjson").encode(e))
 		table.insert(messages, e)
 	end
 
-	table.insert(messages, { role = "user", content = input })
+	table.insert(messages, { role = "user", content = input_content})
 
 	local tool_list = generate_tool_list()
 	local stream = anthropic2.stream_messages(messages, tool_list, nil)
 	local state = anthropic2.get_init_state()
-	local tool_request_list = {}
+
+	table.insert(session_history, { role = "user", content = input_content })
 
 	-- I'm assuming here the response is completely read in a call
 	-- to run_input().  If this isn't the case then we'll need an
@@ -182,14 +187,33 @@ local function run()
 		if input == nil then break end
 		input = input:match("^%s*(.-)%s*$")
 		if #input > 0 then
+			local tool_request_list = { }
+
 			readline.addhistory(input)
 			log_file:write_json({ block = "input", input_str = input })
 --			readline.historysave(os.getenv("HOME") .. "/.claude_history")
 --			-- TODO: log intermediary steps
-			run_input(input)
+			run_input({ { type = "text", text = input } }, tool_request_list)
 
-			-- Add the session history entry AFTER so it isn't double-sent
-			table.insert(session_history, { role = "user", content = input })
+			-- If tool_request_list is not nil then we need to run the tool requests,
+			-- populate a user request with the tool responses, and then send it over.
+			while (#tool_request_list > 0) do
+				local tl = {}
+				print("[DEBUG] tool count: " .. #tool_request_list)
+				for _, v in ipairs(tool_request_list) do
+					table.insert(tl, {
+						type = "tool_result",
+						tool_use_id = v.id,
+						is_error = true,
+						content = "This isn't yet implemented!",
+					});
+				end
+
+				tool_request_list = {}
+
+				run_input(tl, tool_request_list)
+			end
+
 		end
 		log_file:flush()
 		print("====\n")
