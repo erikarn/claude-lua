@@ -24,6 +24,14 @@ I've opened two issues:
  * https://github.com/motoprogger/lua-readline/issues/1 - source URL
  * https://github.com/motoprogger/lua-readline/issues/2 - linking to readline
 
+lua-http:
+
+I've had to use HTTP/1.1 ; it's defaulting to HTTP/2 and things
+are hanging once I try sending a > 1024 byte body payload.
+
+I've filed a bug: https://github.com/daurnimator/lua-http/issues/239
+
+
 experimenting
 =============
 

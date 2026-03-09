@@ -18,8 +18,15 @@ function M.stream_messages(messages, opts)
 
     local body = json.encode(payload)
 
+--    print(string.format("[DEBUG] payload; %d bytes, %d entries\n", #body, #payload.messages))
+
     -- build request
     local req = http_request.new_from_uri("https://api.anthropic.com/v1/messages")
+
+    -- Force HTTP/1.1 for now; HTTP/2 is hanging when the body is greater
+    -- than 1024 bytes and I'm not sure why just yet.
+    req.version = 1.1
+
     req.headers:upsert(":method",          "POST")
     req.headers:upsert("content-type",     "application/json")
     req.headers:upsert("x-api-key",        API_KEY)
@@ -27,9 +34,9 @@ function M.stream_messages(messages, opts)
     req.headers:upsert("accept",           "text/event-stream")
     req:set_body(body)
 
-    local headers, stream = req:go(30)  -- 30s timeout
+    local headers, stream, errno = req:go(30)  -- 30s timeout
     if not headers then
-        error("request failed: " .. tostring(stream))
+        error("request failed: " .. tostring(stream) .. "errno: " .. errno)
     end
 
     local status = tonumber(headers:get(":status"))
