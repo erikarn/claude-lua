@@ -5,7 +5,7 @@ local API_KEY = os.getenv("ANTHROPIC_API_KEY"):gsub("%s+", "")
 
 local M = {}
 
-function M.stream_messages(messages, opts)
+function M.stream_messages(messages, tools, opts)
     opts = opts or {}
 
     local payload = {
@@ -13,12 +13,14 @@ function M.stream_messages(messages, opts)
         max_tokens = opts.max_tokens or 1024,
         stream     = true,            -- enable SSE streaming
         messages   = messages,
+	tools = tools,
     }
     if opts.system then payload.system = opts.system end
 
     local body = json.encode(payload)
 
 --    print(string.format("[DEBUG] payload; %d bytes, %d entries\n", #body, #payload.messages))
+--    print("[debug] request body: " .. body)
 
     -- build request
     local req = http_request.new_from_uri("https://api.anthropic.com/v1/messages")
@@ -74,6 +76,7 @@ function M.parse_sse_line(line, state)
             state.message_id   = msg.id
             state.model        = msg.model
             state.input_tokens = msg.usage and msg.usage.input_tokens
+	    state.done = false
 
         elseif data.type == "content_block_start" then
             state.current_index = data.index
