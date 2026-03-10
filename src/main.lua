@@ -83,8 +83,30 @@ local function run_input(input_content, tool_request_list)
 
 	log_file:dlog("conversation", json.encode(messages))
 
-	local stream = anthropic2.stream_messages(messages,
+::retry::
+	local stream, err_state = anthropic2.stream_messages(messages,
 	    tool_list:get_tool_schema_list(), nil)
+	if (stream == nil) then
+		local es = json.decode(err_state.content)
+		-- API error
+		-- XXX TODO: log!
+		-- XXX TODO: return some action!
+		--
+		log_file:dlog("conversation", err_state.content)
+		print("[ERROR] code=" .. tostring(err_state.code))
+--		print("[ERROR] payload=" .. err_state.content)
+		print("[ERROR] type='" .. es.type .. "'")
+--		print("[ERROR] error.type=" .. es.error.type)
+		if (err_state.code == 429 and es.type == "error"
+		    and es.error.type == "rate_limit_error") then
+			-- sigh, lua
+			print("[ERROR] Sleeping for 30 seconds and retrying..")
+			os.execute('sleep 30')
+			goto retry
+		end
+		return false
+	end
+
 	local state = anthropic2.get_init_state()
 
 	table.insert(session_history, { role = "user", content = input_content })
@@ -150,6 +172,8 @@ local function run_input(input_content, tool_request_list)
 	log_file:write_json({ block = "response", content = response })
 	log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
 	print(string.format("[tokens] %d input tokens, %d output tokens\n", state.input_tokens, state.output_tokens))
+
+	return true
 end
 
 local function set_rng_fn()
@@ -182,7 +206,10 @@ local function run()
 			log_file:write_json({ block = "input", input_str = input })
 --			readline.historysave(os.getenv("HOME") .. "/.claude_history")
 --			-- TODO: log intermediary steps
-			run_input({ { type = "text", text = input } }, tool_request_list)
+			local r = run_input({ { type = "text", text = input } }, tool_request_list)
+			if r == false then
+				break
+			end
 
 			-- If tool_request_list is not nil then we need to run the tool requests,
 			-- populate a user request with the tool responses, and then send it over.
@@ -210,7 +237,10 @@ local function run()
 
 				tool_request_list = {}
 
-				run_input(tl, tool_request_list)
+				local r = run_input(tl, tool_request_list)
+				if r == false then
+					break
+				end
 			end
 
 		end
