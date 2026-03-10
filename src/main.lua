@@ -75,7 +75,7 @@ local function run_input(input_content, tool_request_list)
 	-- I'll tackle that later.
 	--
 	for i, e in ipairs(session_history) do
---		print("[DEBUG] [HISTORY] i: " .. tostring(i) .. " e: " .. require("dkjson").encode(e))
+		log_file:dprint("history", "i: " .. tostring(i) .. " e: " .. require("dkjson").encode(e))
 		table.insert(messages, e)
 	end
 
@@ -97,7 +97,7 @@ local function run_input(input_content, tool_request_list)
 		for single_line in (line .. "\n"):gmatch("([^\n]*)\n") do
 			if single_line == "\n" then goto next_single_line end
 			if single_line == "" then goto next_single_line end
---			print("[DEBUG] line: " .. single_line)
+			log_file:dprint("input_line", single_line)
 			anthropic2.parse_sse_line(single_line, state)
 
 			-- State now contains whatever partial or full
@@ -113,7 +113,7 @@ local function run_input(input_content, tool_request_list)
 			--
 			-- Fire off the tool request to populate in the output stream.
 			if state.done == true and state.needs_tool == true then
-				print("[DEBUG] tool request: " .. json.encode(state.pending_tool))
+				log_file:dprint("tools", "tool request: " .. json.encode(state.pending_tool))
 				-- do a full copy
 				local tool_req = {
 					id = state.pending_tool.id,
@@ -183,12 +183,13 @@ local function run()
 			-- populate a user request with the tool responses, and then send it over.
 			while (#tool_request_list > 0) do
 				local tl = {}
-				print("[DEBUG] tool count: " .. #tool_request_list)
+				log_file:dprint("tools", "tool count: " .. #tool_request_list)
 				for _, v in ipairs(tool_request_list) do
-					print("[DEBUG] tool name: " .. v.name)
+					log_file:dprint("tools", "tool name: " .. v.name)
 					local tool = tool_list:lookup_and_create(v.name)
 					if tool == nil then
-						print("[DEBUG] tool lookup failed")
+						-- TODO: maybe make this an error print/log?
+						log_file:dprint("tools", "tool lookup failed")
 						table.insert(tl, {
 							type = "tool_result",
 							tool_use_id = v.id,
@@ -197,7 +198,7 @@ local function run()
 						});
 					else
 						local tr = tool:run(v)
-						print("[DEBUG] tool response: " .. json.encode(tr))
+						log_file:dprint("tools", "tool response: " .. json.encode(tr))
 						table.insert(tl, tr)
 					end
 				end

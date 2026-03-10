@@ -13,7 +13,12 @@ function Clog:create()
 	local m = {}
 	setmetatable(m, Clog)
 	m.locals = {}
+	m.debug_sections = {}
 	return m
+end
+
+function Clog:debug_section(sn, en)
+	self.debug_sections[sn] = en
 end
 
 function Clog:open(fname)
@@ -73,5 +78,45 @@ function Clog:write_json(jt)
 	self.fh:write(str .. ",\n")
 	return true
 end
+
+-- Write a debug log entry
+--
+-- This will log the debug log entry to the console if it's enabled.
+-- It won't log to the session log.
+--
+-- Note the string isn't to be newline terminated; this will be done here.
+--
+function Clog:dprint(sstr, dstr)
+	local str
+
+	str = "[DEBUG][" .. sstr .. "] " .. dstr
+	if self.debug_sections[sn] ~= nil and self.debug_sections[sn] == true then
+		-- TODO: configurable debugging, obviously
+		print(str .. "\n")
+	end
+end
+
+-- Write/log a debug log entry
+--
+-- This will log the debug log entry to the console if it's enabled.
+-- It will also log to the system log if enabled.
+--
+-- Note the string isn't to be newline terminated; this will be done here.
+--
+function Clog:dlog(sstr, dstr)
+	local str
+
+	str = "[DEBUG][" .. sstr .. "] " .. dstr
+	if self.debug_sections[sn] ~= nil and self.debug_sections[sn] == true then
+		-- TODO: configurable debugging, obviously
+		print(str .. "\n")
+	end
+
+	-- TODO: configurable debug logging, obviously
+	local str = json.encode({ type = "debug", content = { section = sstr, text = dstr }})
+	self.fh:write(str .. ",\n")
+	return true
+end
+
 
 return Clog
