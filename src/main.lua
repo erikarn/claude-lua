@@ -81,6 +81,8 @@ local function run_input(input_content, tool_request_list)
 
 	table.insert(messages, { role = "user", content = input_content})
 
+	log_file:dlog("conversation", json.encode(messages))
+
 	local stream = anthropic2.stream_messages(messages,
 	    tool_list:get_tool_schema_list(), nil)
 	local state = anthropic2.get_init_state()
@@ -131,8 +133,11 @@ local function run_input(input_content, tool_request_list)
 
 	-- This gets messy, because if a tool (or more than one tool is requested)
 	-- then the conversation history needs to include it all.
+	--
 	local content_list = {}
-	table.insert(content_list, { type = "text", text = response })
+	if (response ~= nil and response ~= "") then
+		table.insert(content_list, { type = "text", text = response })
+	end
 
 	-- And now insert the tool invocation history
 	for _, v in ipairs(tool_request_list) do
