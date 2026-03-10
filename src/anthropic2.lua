@@ -43,10 +43,11 @@ function M.stream_messages(messages, tools, opts)
 
     local status = tonumber(headers:get(":status"))
     if status ~= 200 then
-        error("API error " .. status .. ": " .. stream:get_body_as_string())
+	local errstate = { code = status, content = stream:get_body_as_string() }
+	return nil, errstate
     end
 
-    return stream
+    return stream, nil
 end
 
 -- SSE parser - Anthropic sends lines like:
