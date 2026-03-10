@@ -38,19 +38,12 @@ function Weather:run(input)
 
 	local tool_id = nil
 
-	for _, v in ipairs(input) do
-		print("[DEBUG] v=" .. json.encode(v))
-	end
+	-- TODO: actually do a weather lookup somehow!
 
 	return {
-		role = "user",
-		content = {
-			{
-				type = "tool_result",
-				tool_use_id = tool_id,
-				content = "15 degrees C, and this is a test reponse!"
-			},
-		},
+		type = "tool_result",
+		tool_use_id = input.id,
+		content = "15 degrees C, and this is a test reponse!"
 	}
 end
 

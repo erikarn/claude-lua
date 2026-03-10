@@ -6,18 +6,22 @@ local uuid = require('uuid')
 local lfs = require('lfs')
 local clog = require('clog')
 local json = require('dkjson')
+local tools = require('tools')
 
 local session_history = {}
 
 local log_file = nil
+
+local tool_list = tools.create()
 
 -- TODO: we're statically using this for now,
 -- soon we'll want to register tools and then have a way to
 -- populate the tool requests and handle responses
 -- and route them correctly.
 --
-local weather = require('tools/weather')
-local weather_inst = weather:create()
+
+-- XXX god damnit I should have the tool announce its name too
+tool_list:register("get_weather", require('tools/weather'))
 
 function generate_tool_list()
 	local tl = {}
@@ -71,14 +75,14 @@ local function run_input(input_content, tool_request_list)
 	-- I'll tackle that later.
 	--
 	for i, e in ipairs(session_history) do
-		print("[DEBUG] [HISTORY] i: " .. tostring(i) .. " e: " .. require("dkjson").encode(e))
+--		print("[DEBUG] [HISTORY] i: " .. tostring(i) .. " e: " .. require("dkjson").encode(e))
 		table.insert(messages, e)
 	end
 
 	table.insert(messages, { role = "user", content = input_content})
 
-	local tool_list = generate_tool_list()
-	local stream = anthropic2.stream_messages(messages, tool_list, nil)
+	local stream = anthropic2.stream_messages(messages,
+	    tool_list:get_tool_schema_list(), nil)
 	local state = anthropic2.get_init_state()
 
 	table.insert(session_history, { role = "user", content = input_content })
@@ -109,7 +113,6 @@ local function run_input(input_content, tool_request_list)
 			--
 			-- Fire off the tool request to populate in the output stream.
 			if state.done == true and state.needs_tool == true then
-				print("[ERROR] Tool request but not yet implemented!")
 				print("[DEBUG] tool request: " .. json.encode(state.pending_tool))
 				-- do a full copy
 				local tool_req = {
@@ -138,25 +141,6 @@ local function run_input(input_content, tool_request_list)
 	end
 
 	table.insert(session_history, { role = "assistant", content = content_list })
-
-	-- TODO: now some tool invocations will need to happen; likely done by the caller
-	-- if we have a way to populate that.
-	--
-	--
-	-- TODO: this has to happen as part of a queued user request back TO the API, and not
-	-- merely handled here.
-	--
-	-- So, this won't work as-is; I'm going to need to return the tool request up to
-	-- the caller so it can run the tool(s), populate the responses and then submit
-	-- its own request to the API to continue.
---	if (#tool_request_list > 0) then
---		local tmp_tool_resp_list = {}
---		for _, v in ipairs(tool_request_list) do
---			table.insert(tmp_tool_resp_list,
---			    { type = "tool_result", tool_use_id = v.id, is_error = true, content = "Unimplemented for now!" })
---		end
---		table.insert(session_history, { role = "user", content = tmp_tool_request_list})
---	end
 
 	log_file:write_json({ block = "response", content = response })
 	log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
@@ -201,12 +185,21 @@ local function run()
 				local tl = {}
 				print("[DEBUG] tool count: " .. #tool_request_list)
 				for _, v in ipairs(tool_request_list) do
-					table.insert(tl, {
-						type = "tool_result",
-						tool_use_id = v.id,
-						is_error = true,
-						content = "This isn't yet implemented!",
-					});
+					print("[DEBUG] tool name: " .. v.name)
+					local tool = tool_list:lookup_and_create(v.name)
+					if tool == nil then
+						print("[DEBUG] tool lookup failed")
+						table.insert(tl, {
+							type = "tool_result",
+							tool_use_id = v.id,
+							is_error = true,
+							content = "The requested tool doesn't exist!",
+						});
+					else
+						local tr = tool:run(v)
+						print("[DEBUG] tool response: " .. json.encode(tr))
+						table.insert(tl, tr)
+					end
 				end
 
 				tool_request_list = {}
