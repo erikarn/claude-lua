@@ -90,7 +90,7 @@ function Clog:dprint(sstr, dstr)
 	local str
 
 	str = "[DEBUG][" .. sstr .. "] " .. dstr
-	if self.debug_sections[sn] ~= nil and self.debug_sections[sn] == true then
+	if self.debug_sections[sstr] ~= nil and self.debug_sections[sstr] == true then
 		-- TODO: configurable debugging, obviously
 		print(str .. "\n")
 	end
@@ -107,7 +107,7 @@ function Clog:dlog(sstr, dstr)
 	local str
 
 	str = "[DEBUG][" .. sstr .. "] " .. dstr
-	if self.debug_sections[sn] ~= nil and self.debug_sections[sn] == true then
+	if self.debug_sections[sstr] ~= nil and self.debug_sections[sstr] == true then
 		-- TODO: configurable debugging, obviously
 		print(str .. "\n")
 	end
