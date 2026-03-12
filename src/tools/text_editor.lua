@@ -57,12 +57,49 @@ function TextEditor:split_lines(content)
 	return lines
 end
 
+--
+-- Handle the view command from the agent.
+--
+-- This is called for both directory and file viewing.
+-- Directory viewing will have a trailing slash.
+--
+-- File contents will be returned line by line prefixed with
+-- a line number and a tab character.
+--
+-- I am not yet sure what the directory contents will be prepended
+-- with.  That will require some experimentation.
+--
+-- It also seems the tool may not know if it is asking for
+-- a directory or file.  (I wish the API were better defined.)
+-- Specifically if you ask it to list the contents of a path with
+-- no trailing slash, it just issues view.  I guess we would have
+-- to handle that and if it's a directory list the contents of the
+-- directory?  But how do we return that it's a directory?
+--
+-- Ah, according to the 'memory-tool' documentation, directories
+-- are formatted as <size><tab><path/file> . Size is a human readable
+-- format, eg "1.5K".  That's sufficiently different to file contents.
+-- ok.
+--
 function TextEditor:cmd_view(req)
+
+	-- Initial path sanitization
 	local path, err = self:sanitize_path(req.input.path)
 	if not path then
 		return {
 		    is_error = true,
 		    content = err,
+		    type = "tool_result",
+		    tool_use_id = req.id
+		}
+	end
+
+	-- See if it's a directory - if it is then it's not supported;
+	-- return that.
+	if path:sub(-1, -1) == "/" then
+		return {
+		    is_error = true,
+		    content = "Error: directory listings are not yet supported",
 		    type = "tool_result",
 		    tool_use_id = req.id
 		}
