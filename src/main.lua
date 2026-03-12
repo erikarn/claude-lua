@@ -22,6 +22,7 @@ local tool_list = tools.create()
 
 -- XXX god damnit I should have the tool announce its name too
 tool_list:register("get_weather", require('tools/weather'))
+tool_list:register("str_replace_based_edit_tool", require('tools/text_editor'))
 
 function generate_tool_list()
 	local tl = {}
@@ -94,7 +95,7 @@ local function run_input(input_content, tool_request_list)
 		--
 		log_file:dlog("conversation", err_state.content)
 		print("[ERROR] code=" .. tostring(err_state.code))
---		print("[ERROR] payload=" .. err_state.content)
+		print("[ERROR] payload=" .. err_state.content)
 		print("[ERROR] type='" .. es.type .. "'")
 --		print("[ERROR] error.type=" .. es.error.type)
 		if (err_state.code == 429 and es.type == "error"
@@ -192,6 +193,7 @@ local function run()
 
 	-- Sigh, global since this isn't a class and we need it in other functions
 	log_file = open_log_file(session_uuid)
+	log_file:debug_section("tools", true)
 
 	log_file:write_json( { start_timestamp = 1234 } );
 
@@ -229,6 +231,7 @@ local function run()
 							content = "The requested tool doesn't exist!",
 						});
 					else
+						log_file:dprint("tools", "tool request: " .. json.encode(v))
 						local tr = tool:run(v)
 						log_file:dprint("tools", "tool response: " .. json.encode(tr))
 						table.insert(tl, tr)
