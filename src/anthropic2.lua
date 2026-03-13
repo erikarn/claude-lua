@@ -5,9 +5,23 @@ local API_KEY = os.getenv("ANTHROPIC_API_KEY"):gsub("%s+", "")
 
 local M = {}
 
+-- Connect to the API and send the given message array as the
+-- request state.
+--
+-- There are a variety of options supported in the various API
+-- options:
+--
+-- thinking: { type = <enabled|disabled>, budget_tokens = <number> }
+-- model: <model string>
+-- system: <system prompt string>
+-- max_tokens: <maximum tokens>
+-- 
 function M.stream_messages(messages, tools, opts)
     opts = opts or {}
 
+    -- TODO: this assumes we're going to use SSE streaming, rather than
+    -- the single json message request/response API.
+    --
     local payload = {
         model      = opts.model      or "claude-sonnet-4-20250514",
         max_tokens = opts.max_tokens or 1024,
@@ -16,6 +30,8 @@ function M.stream_messages(messages, tools, opts)
 	tools = tools,
     }
     if opts.system then payload.system = opts.system end
+    if opts.thinking then payload.thinking = opts.thinking end
+    if opts.max_tokens then payload.max_tokens = opts.max_tokens end
 
     local body = json.encode(payload)
 
