@@ -1,6 +1,6 @@
 -- main.lua
 
-local anthropic2 = require("anthropic2")
+local anthropic3 = require("anthropic3")
 local readline = require("readline")
 local uuid = require('uuid')
 local lfs = require('lfs')
@@ -13,6 +13,8 @@ local session_history = {}
 local log_file = nil
 
 local tool_list = tools.create()
+
+local API_KEY = os.getenv("ANTHROPIC_API_KEY"):gsub("%s+", "")
 
 -- TODO: we're statically using this for now,
 -- soon we'll want to register tools and then have a way to
@@ -85,7 +87,9 @@ local function run_input(input_content, tool_request_list)
 	log_file:dlog("conversation", json.encode(messages))
 
 ::retry::
-	local stream, err_state = anthropic2.stream_messages(messages,
+	local an_req = anthropic3.create()
+	an_req:set_api_key(API_KEY)
+	local stream, err_state = an_req:stream_messages(messages,
 	    tool_list:get_tool_schema_list(), nil)
 	if (stream == nil) then
 		local es = json.decode(err_state.content)
@@ -108,7 +112,7 @@ local function run_input(input_content, tool_request_list)
 		return false
 	end
 
-	local state = anthropic2.get_init_state()
+	local state = an_req:get_init_state()
 
 	table.insert(session_history, { role = "user", content = input_content })
 
@@ -123,7 +127,7 @@ local function run_input(input_content, tool_request_list)
 			if single_line == "\n" then goto next_single_line end
 			if single_line == "" then goto next_single_line end
 			log_file:dprint("input_line", single_line)
-			anthropic2.parse_sse_line(single_line, state)
+			an_req:parse_sse_line(single_line, state)
 
 			-- State now contains whatever partial or full
 			-- output needs to be handled, either by being
