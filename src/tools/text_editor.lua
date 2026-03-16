@@ -240,6 +240,8 @@ end
 
 -- Create a file.
 --
+-- The file contents are in req.input.file_text as a straight up text blob.
+-- 
 function TextEditor:cmd_create(req)
 	local path = req.path
 
@@ -277,10 +279,71 @@ function TextEditor:cmd_create(req)
 	}
 end
 
+-- Insert a line at the given line number.
+--
+-- This requires input.insert_line and input.insert_text.
+-- input.insert_text will have 1 or more lines separated by \n .
+--
 function TextEditor:cmd_insert(req)
+
+	-- Sanity check arguments
+	if req.input.path == nil
+	    or req.input.insert_line == nil
+	    or req.input.insert_text == nil then
+		return {
+		    is_error = true,
+		    content = "Error: path, insert_line and insert_text are required"
+		}
+	end
+
+	-- Sanitize path
+	--
+	local path, err = self:sanitize_path(req.input.path)
+	if not path then
+		return {
+		    is_error = true,
+		    content = err,
+		}
+	end
+
+	-- Read content
+	local content, read_err = self:read_file(path)
+	if not content then
+		return {
+		    is_error = true,
+		    content = "Error: " .. (read_err or "unknown"),
+		}
+	end
+
+	-- Split text lines
+	local lines = self:split_lines(content)
+
+	if req.input.insert_line < 0 or req.input.insert_line > #lines then
+		return {
+			is_error = true,
+			content = string.format(
+			    "Error: insert_line %d out of range (file has %d lines)",
+			    req.input.insert_line, #lines)
+		}
+	end
+
+	local new_lines = self:split_lines(req.input.insert_text)
+	for i, line in ipairs(new_lines) do
+		table.insert(lines, req.input.insert_line + i, line)
+	end
+
+	-- Concatenate file contents back, write
+	local ret, write_err = self:write_file(path, table.concat(lines, "\n"))
+	if not ret then
+		return {
+			is_error = true,
+			content = "Error writing file: " .. (write_err or "unknown")
+		}
+	end
+
 	return {
-	    is_error = true,
-	    content = "Error: unimplemented command: " .. tostring(command),
+	    content = string.format("Inserted %d line(s) after line %d",
+	        #new_lines, req.input.insert_line)
 	}
 end
 
