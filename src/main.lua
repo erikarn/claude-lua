@@ -237,7 +237,14 @@ local function run()
 					else
 						log_file:dprint("tools", "tool request: " .. json.encode(v))
 						local tr = tool:run(v)
+						-- populate common info
+						tr.type = "tool_result"
+						tr.tool_use_id = v.id
+
+						-- log
 						log_file:dprint("tools", "tool response: " .. json.encode(tr))
+
+						-- insert into the request/response flow
 						table.insert(tl, tr)
 					end
 				end

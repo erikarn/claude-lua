@@ -41,8 +41,6 @@ function Weather:run(input)
 	-- TODO: actually do a weather lookup somehow!
 
 	return {
-		type = "tool_result",
-		tool_use_id = input.id,
 		content = "15 degrees C, and this is a test reponse!"
 	}
 end

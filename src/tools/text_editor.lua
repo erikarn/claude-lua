@@ -89,8 +89,6 @@ function TextEditor:cmd_view(req)
 		return {
 		    is_error = true,
 		    content = err,
-		    type = "tool_result",
-		    tool_use_id = req.id
 		}
 	end
 
@@ -100,8 +98,6 @@ function TextEditor:cmd_view(req)
 		return {
 		    is_error = true,
 		    content = "Error: directory listings are not yet supported",
-		    type = "tool_result",
-		    tool_use_id = req.id
 		}
 	end
 
@@ -111,8 +107,6 @@ function TextEditor:cmd_view(req)
 		return {
 		    is_error = true,
 		    content = "Error: " .. (read_err or "unknown"),
-		    type = "tool_result",
-		    tool_use_id = req.id
 		}
 	end
 
@@ -130,8 +124,6 @@ function TextEditor:cmd_view(req)
 			return {
 			    is_error = true,
 			    content = string.format("error: start_line %d out of range (file has %d lines)", start_line, #lines),
-			    type = "tool_result",
-			    tool_use_id = req.id
 			}
 		end
 		end_l = math.min(end_l, #lines)
@@ -150,8 +142,6 @@ function TextEditor:cmd_view(req)
 	-- end
 	return {
 	    content = output,
-	    type = "tool_result",
-	    tool_use_id = req.id,
 	}
 
 end
@@ -160,8 +150,6 @@ function TextEditor:cmd_str_replace(req)
 	return {
 	    is_error = true,
 	    content = "Error: unimplemented command: " .. tostring(command),
-	    type = "tool_result",
-	    tool_use_id = req.id
 	}
 end
 
@@ -169,8 +157,6 @@ function TextEditor:cmd_create(req)
 	return {
 	    is_error = true,
 	    content = "Error: unimplemented command: " .. tostring(command),
-	    type = "tool_result",
-	    tool_use_id = req.id
 	}
 end
 
@@ -178,8 +164,6 @@ function TextEditor:cmd_insert(req)
 	return {
 	    is_error = true,
 	    content = "Error: unimplemented command: " .. tostring(command),
-	    type = "tool_result",
-	    tool_use_id = req.id
 	}
 end
 
@@ -197,15 +181,11 @@ function TextEditor:run(req)
 		return {
 		    is_error = true,
 		    content = "Error: undo_edit is not supported in text_editor_20250728",
-		    type = "tool_result",
-		    tool_use_id = req.id
 	        }
 	else
 		return {
 		    is_error = true,
 		    content = "Error: unknown command: " .. tostring(command),
-		    type = "tool_result",
-		    tool_use_id = req.id
 		}
 	end
 end
