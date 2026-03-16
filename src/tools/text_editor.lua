@@ -57,51 +57,63 @@ function TextEditor:split_lines(content)
 	return lines
 end
 
---
--- Handle the view command from the agent.
---
--- This is called for both directory and file viewing.
--- Directory viewing will have a trailing slash.
---
--- File contents will be returned line by line prefixed with
--- a line number and a tab character.
---
--- I am not yet sure what the directory contents will be prepended
--- with.  That will require some experimentation.
---
--- It also seems the tool may not know if it is asking for
--- a directory or file.  (I wish the API were better defined.)
--- Specifically if you ask it to list the contents of a path with
--- no trailing slash, it just issues view.  I guess we would have
--- to handle that and if it's a directory list the contents of the
--- directory?  But how do we return that it's a directory?
---
--- Ah, according to the 'memory-tool' documentation, directories
--- are formatted as <size><tab><path/file> . Size is a human readable
--- format, eg "1.5K".  That's sufficiently different to file contents.
--- ok.
---
-function TextEditor:cmd_view(req)
-
-	-- Initial path sanitization
-	local path, err = self:sanitize_path(req.input.path)
-	if not path then
-		return {
-		    is_error = true,
-		    content = err,
-		}
+function TextEditor:is_directory(path)
+	local fa = lfs.attributes(path)
+	if fa == nil then
+		return false
 	end
-
-	-- See if it's a directory - if it is then it's not supported;
-	-- return that.
-	if path:sub(-1, -1) == "/" then
-		return {
-		    is_error = true,
-		    content = "Error: directory listings are not yet supported",
-		}
+	if fa.mode == "directory" then
+		return true
 	end
+	return false
+end
 
-	-- TODO: directory open?
+function TextEditor:is_file(path)
+	local fa = lfs.attributes(path)
+	if fa == nil then
+		return false
+	end
+	if fa.mode == "file" then
+		return true
+	end
+	return false
+end
+
+-- Return a directory listing for the given path.
+--
+-- This assumes the path has already been validated and is
+-- in the sandbox.
+-- 
+-- Returns nil if there's an error, or the directory listing
+-- line by line if not.
+--
+function TextEditor:cmd_view_directory(req, path)
+	local dirs = {}
+
+	for file in lfs.dir(path) do
+		if file == "." or file == ".." then
+			goto nextdir
+		end
+
+		local fn = path .. "/" .. file
+		local fa = lfs.attributes(fn)
+		if fa.mode == "file" then
+			table.insert(dirs, tostring(fa.size) .. "\t" .. file)
+		elseif fa.mode == "directory" then
+			table.insert(dirs, "0" .. "\t" .. file .. "/")
+		else
+			-- TODO: what do we do for non file/directory entries?
+			table.insert(dirs, "0" .. "\t" .. file)
+		end
+	::nextdir::
+	end
+	local output = table.concat(dirs, "\n")
+	return {
+	    content = output,
+	}
+end
+
+function TextEditor:cmd_view_file(req, path)
 	local content, read_err = self:read_file(path)
 	if not content then
 		return {
@@ -143,7 +155,56 @@ function TextEditor:cmd_view(req)
 	return {
 	    content = output,
 	}
+end
 
+--
+-- Handle the view command from the agent.
+--
+-- This is called for both directory and file viewing.
+-- Directory viewing will have a trailing slash.
+--
+-- File contents will be returned line by line prefixed with
+-- a line number and a tab character.
+--
+-- I am not yet sure what the directory contents will be prepended
+-- with.  That will require some experimentation.
+--
+-- It also seems the tool may not know if it is asking for
+-- a directory or file.  (I wish the API were better defined.)
+-- Specifically if you ask it to list the contents of a path with
+-- no trailing slash, it just issues view.  I guess we would have
+-- to handle that and if it's a directory list the contents of the
+-- directory?  But how do we return that it's a directory?
+--
+-- Ah, according to the 'memory-tool' documentation, directories
+-- are formatted as <size><tab><path/file> . Size is a human readable
+-- format, eg "1.5K".  That's sufficiently different to file contents.
+-- ok.
+--
+function TextEditor:cmd_view(req)
+
+	-- Initial path sanitization
+	local path, err = self:sanitize_path(req.input.path)
+	if not path then
+		return {
+		    is_error = true,
+		    content = err,
+		}
+	end
+
+	if self:is_directory(path) then
+		return self:cmd_view_directory(req, path)
+	end
+
+	if self:is_file(path) then
+		return self:cmd_view_file(req, path)
+	end
+
+	-- XXX TODO: verify what the correct error is here
+	return {
+	    is_error = true,
+	    content = "Error: the object at '" .. path .. "' is not a supported type"
+	}
 end
 
 function TextEditor:cmd_str_replace(req)
