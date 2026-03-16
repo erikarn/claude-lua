@@ -1,5 +1,7 @@
 
--- Example weather tool
+-- A lua 5.4 implementation of the text editor / directory list tool.
+--
+-- Documented at https://platform.claude.com/docs/en/agents-and-tools/tool-use/text-editor-tool
 --
 
 local json = require('dkjson')
@@ -49,6 +51,20 @@ function TextEditor:read_file(path)
 	return content
 end
 
+-- Write / replace a file.
+--
+function TextEditor:write_file(path, content)
+	local f, err = io.open(path, "w+")
+	if not f then return false, err end
+
+	-- TODO: how can we validate the file was written to?
+	-- eg, is there a return value from :write() that can be checked?
+	f:write(content)
+	f:close()
+
+	return true
+end
+
 function TextEditor:split_lines(content)
 	local lines = {}
 	for line in (content .. "\n"):gmatch("([^\n]*)\n") do
@@ -77,6 +93,14 @@ function TextEditor:is_file(path)
 		return true
 	end
 	return false
+end
+
+function TextEditor:is_exists(path)
+	local fa = lfs.attributes(path)
+	if fa == nil then
+		return false
+	end
+	return true
 end
 
 -- Return a directory listing for the given path.
@@ -214,10 +238,42 @@ function TextEditor:cmd_str_replace(req)
 	}
 end
 
+-- Create a file.
+--
 function TextEditor:cmd_create(req)
+	local path = req.path
+
+	-- Sanitize path
+	--
+	local path, err = self:sanitize_path(req.input.path)
+	if not path then
+		return {
+		    is_error = true,
+		    content = err,
+		}
+	end
+
+	-- Check if the file exists
+	if self:is_exists(path) then
+		-- TODO: I don't know if there's a proper error to
+		-- return here!
+		return {
+			is_error = true,
+			content = "A file/directory already exists at '" .. path .. "'"
+		}
+	end
+
+	-- Attempt to create the file
+	local ret, msg = self:write_file(path, req.input.file_text)
+	if ret == false then
+		return {
+			is_error = true,
+			content = msg
+		}
+	end
+
 	return {
-	    is_error = true,
-	    content = "Error: unimplemented command: " .. tostring(command),
+	    content = "Successfully create and wrote to '" .. path .. "'"
 	}
 end
 
