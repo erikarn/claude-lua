@@ -34,6 +34,22 @@ function TextEditor:sanitize_path(path)
 	return path
 end
 
+
+function TextEditor:count_occurrences(haystack, needle)
+    -- Escape magic characters for plain find
+    local escaped = needle:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
+    local count = 0
+    local init = 1
+    while true do
+        local s = haystack:find(escaped, init, false)
+        if not s then break end
+        count = count + 1
+        init = s + #needle
+    end
+    return count
+end
+
+
 -- Read a file.
 --
 -- This reads the whole file in at once. None of this is using streaming,
@@ -232,11 +248,41 @@ function TextEditor:cmd_view(req)
 end
 
 function TextEditor:cmd_str_replace(req)
-	return {
-	    is_error = true,
-	    content = "Error: unimplemented command: " .. tostring(command),
-	}
+    if not req.input.old_str then
+        return { is_error = true, content = "Error: old_str is required" }
+    end
+
+    local path, err = self:sanitize_path(req.input.path)
+    if not path then return { is_error = true, content = err } end
+
+    local content, read_err = self:read_file(path)
+    if not content then
+        return { is_error = true,
+	    content = "Error: " .. (read_err or "unknown") }
+    end
+
+    local count = self:count_occurrences(content, req.input.old_str)
+
+    if count == 0 then
+        return { is_error = true, content = "Error: old_str not found in file" }
+    end
+    if count > 1 then
+        return { is_error = true, content = string.format(
+            "Error: old_str matches %d locations — must be unique. Add more surrounding context.", count) }
+    end
+
+    local escaped     = req.input.old_str:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
+    local new_str     = (req.input.new_str or ""):gsub("%%", "%%%%")  -- escape replacement string
+    local new_content = content:gsub(escaped, new_str, 1)
+
+    local ok, write_err = self:write_file(path, new_content)
+    if not ok then
+        return { is_error = true, content = "Error writing file: " .. (write_err or "unknown") }
+    end
+
+    return { content = "str_replace applied successfully" }
 end
+
 
 -- Create a file.
 --
