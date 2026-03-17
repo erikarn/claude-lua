@@ -3,7 +3,7 @@ notes
 
 This requires some ports built bits
 
-$ pkg install lua54 lua54-luasocket lua54-luasec lua54-luafilesystem
+$ pkg install lua54 lua54-luasocket lua54-luasec lua54-luafilesystem lua54-posix
 
 It also requires the lua-readline, uuid, http and cqueues packages, which
 are only available via luarocks.
