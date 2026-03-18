@@ -44,7 +44,6 @@ local DEFAULTS = {
 -- TODO: should generate unique sentinels each session/invocation!
 --
 local STDOUT_SENTINEL = "__BASH_STDOUT_DONE_7f3a9b__"
-local STDERR_SENTINEL = "__BASH_STDERR_DONE_7f3a9b__"
 local EXIT_PREFIX     = "__BASH_EXIT_7f3a9b__:"
 
 -- ── Allowlist ─────────────────────────────────────────────────────────────────
@@ -81,9 +80,8 @@ end
 local function spawn(config)
     local stdin_r,  stdin_w  = unistd.pipe()
     local stdout_r, stdout_w = unistd.pipe()
-    local stderr_r, stderr_w = unistd.pipe()
 
-    if not stdin_r or not stdout_r or not stderr_r then
+    if not stdin_r or not stdout_r then
         return nil, "Error: failed to create pipes"
     end
 
@@ -98,15 +96,13 @@ local function spawn(config)
         -- ── Child: become bash ─────────────────────────────────────────────
         unistd.close(stdin_w)
         unistd.close(stdout_r)
-        unistd.close(stderr_r)
 
         unistd.dup2(stdin_r,  unistd.STDIN_FILENO)
         unistd.dup2(stdout_w, unistd.STDOUT_FILENO)
-        unistd.dup2(stderr_w, unistd.STDERR_FILENO)
+        unistd.dup2(stdout_w, unistd.STDERR_FILENO)
 
         unistd.close(stdin_r)
         unistd.close(stdout_w)
-        unistd.close(stderr_w)
 
 	-- TODO: holy crap I really REALLY want sandboxing here!
 	--
@@ -115,18 +111,16 @@ local function spawn(config)
         os.exit(1)
 
     else
-        -- ── Parent: keep write-end of stdin, read-ends of stdout/stderr ────
+        -- ── Parent: keep write-end of stdin, read-ends of stdout ────
         unistd.close(stdin_r)
         unistd.close(stdout_w)
-        unistd.close(stderr_w)
 
-	print("pid: " .. tostring(pid))
+--	print("pid: " .. tostring(pid))
 
         return {
             pid      = pid,
             stdin_w  = stdin_w,
             stdout_r = stdout_r,
-            stderr_r = stderr_r,
         }
     end
 end
@@ -139,7 +133,6 @@ function BashSession:_kill()
         wait.wait(self._proc.pid)
         unistd.close(self._proc.stdin_w)
         unistd.close(self._proc.stdout_r)
-        unistd.close(self._proc.stderr_r)
         self._proc = nil
     end
 end
@@ -200,9 +193,7 @@ function BashSession:run(req)
     if not input.command then
         return {
             is_error  = true,
-            stdout    = "",
-            stderr    = "Error: command or restart is required",
-            exit_code = nil,
+            content = "Error: command or restart is required",
         }
     end
 
@@ -224,7 +215,7 @@ function BashSession:run(req)
     --   1. Run the user command
     --   2. Capture $? immediately before anything else can clobber it
     --   3. Emit the exit code line to stdout (it's easier to parse there)
-    --   4. Emit sentinels to both stdout and stderr so we know each
+    --   4. Emit sentinels to both stdout so we know each
     --      stream is done for this command.
     --
     -- The exit code echo goes to stdout so it arrives on the same fd
@@ -237,41 +228,34 @@ function BashSession:run(req)
         "(%s)\n"                                    ..
         "__exit_code=$?\n"                          ..
         "printf '%%s%%s\\n' '%s' \"$__exit_code\"\n" ..
-        "echo '%s'\n"                               ..
-        "echo '%s' >&2\n",
+        "echo '%s'\n",
         input.command,
         EXIT_PREFIX,
-        STDOUT_SENTINEL,
-        STDERR_SENTINEL
+        STDOUT_SENTINEL
     )
 
-    print("running:\n===" .. wrapped .. "\n===\n")
+--    print("running:\n===" .. wrapped .. "\n===\n")
 
     local written, write_err = unistd.write(self._proc.stdin_w, wrapped)
     if not written then
         return {
             is_error  = true,
-            stdout    = "",
-            stderr    = "Error writing to bash: " .. (write_err or "unknown"),
-            exit_code = nil,
+            content = "Error writing to bash: " .. (write_err or "unknown"),
         }
     end
 
-    -- ── Poll stdout and stderr until both sentinels arrive ────────────────
+    -- ── Poll stdout until both sentinels arrive ────────────────
 
     local stdout_buf  = ""
-    local stderr_buf  = ""
     local stdout_done = false
-    local stderr_done = false
     local timed_out   = false
     local deadline    = os.time() + self.config.timeout_seconds
 
     local fds = {
         [self._proc.stdout_r] = { events = { IN = true } },
-        [self._proc.stderr_r] = { events = { IN = true } },
     }
 
-    while not stdout_done or not stderr_done do
+    while not stdout_done do
         if os.time() >= deadline then
             timed_out = true
             break
@@ -293,26 +277,11 @@ function BashSession:run(req)
                     end
                 end
             end
-
-            if not stderr_done
-                and fds[self._proc.stderr_r]
-                and fds[self._proc.stderr_r].revents
-                and fds[self._proc.stderr_r].revents.IN then
-
-                local chunk = unistd.read(self._proc.stderr_r, 4096)
-                if chunk and chunk ~= "" then
-                    stderr_buf = stderr_buf .. chunk
-                    if stderr_buf:find(STDERR_SENTINEL, 1, true) then
-                        stderr_done = true
-                    end
-                end
-            end
         end
     end
     
-    print("finished!\n")
-    print("stdout_buf: " .. stdout_buf)
-    print("stderr_buf: " .. stderr_buf)
+--    print("finished!\n")
+--    print("stdout_buf: " .. stdout_buf)
 
     -- ── Handle timeout ────────────────────────────────────────────────────
 
@@ -320,12 +289,9 @@ function BashSession:run(req)
         self:_kill()
         return {
             is_error  = true,
---            stdout    = stdout_buf,
---            stderr    = stderr_buf .. string.format(
             content = string.format(
                 "\nError: timed out after %ds — session killed. Send restart to continue.",
                 self.config.timeout_seconds),
-            exit_code = nil,
         }
     end
 
@@ -353,7 +319,6 @@ function BashSession:run(req)
 
     -- Strip sentinels
     stdout_buf = stdout_buf:gsub(STDOUT_SENTINEL .. "\n?", "")
-    stderr_buf = stderr_buf:gsub(STDERR_SENTINEL .. "\n?", "")
 
     -- ── Truncate ──────────────────────────────────────────────────────────
 
@@ -366,7 +331,6 @@ function BashSession:run(req)
     end
 
     stdout_buf = truncate(stdout_buf, "stdout")
-    stderr_buf = truncate(stderr_buf, "stderr")
 
     -- ── Return ────────────────────────────────────────────────────────────
 
@@ -377,40 +341,5 @@ function BashSession:run(req)
         content = stdout_buf,
     }
 end
-
--- ── serialise (for tool_result content field) ─────────────────────────────────
-
-function BashSession:serialise(result)
-    local parts = {}
-
-    if result.note then
-        table.insert(parts, result.note)
-    end
-
-    if result.exit_code ~= nil then
-        table.insert(parts, string.format("exit code: %d", result.exit_code))
-    end
-
-    if result.stdout and result.stdout ~= "" then
-        table.insert(parts, "stdout:\n" .. result.stdout)
-    end
-
-    if result.stderr and result.stderr ~= "" then
-        table.insert(parts, "stderr:\n" .. result.stderr)
-    end
-
-    if #parts == 0 then
-        table.insert(parts, "(no output)")
-    end
-
-    return table.concat(parts, "\n\n")
-end
-
--- ── Tool definition (for API tools array) ────────────────────────────────────
-
-BashSession.definition = {
-    type = "bash_20250124",
-    name = "bash",
-}
 
 return BashSession
