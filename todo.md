@@ -3,10 +3,29 @@ general flow
 
 (tbd)
 
+* at some point that big loop in main and the stream handling in the
+  client library should get cleaned up a bunch more and moved into
+  an "agent" class.  That way I can create multiple agents maintaining
+  their own states (tools/tool state, conversation state, etc) so I can
+  build more complicated agent control flows.
+
 tool handling
 =============
 
 (tbd)
+
+* migrate the schema_get() to be a static function, not an object
+  function, so i don't have to call create() first (which for the bash
+  tool is spawning the program, sigh.)
+
+* make a persistent tool cache class that the main loop (and later
+  an agent) will use - the bash tool needs to be persistent and not
+  spawn a shell each invocation (not just for efficiency, but to
+  persist state like current dir, environment variables, etc.)
+
+* add lua-5.4 explicit ```__close``` metamethod in the various
+  class instances - again especially important for bash, which i want
+  to make sure explicitly tears down and frees the process/pipes.
 
 sandboxing
 ==========
