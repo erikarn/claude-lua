@@ -25,6 +25,7 @@ local API_KEY = os.getenv("ANTHROPIC_API_KEY"):gsub("%s+", "")
 -- XXX god damnit I should have the tool announce its name too
 tool_list:register("get_weather", require('tools/weather'))
 tool_list:register("str_replace_based_edit_tool", require('tools/text_editor'))
+tool_list:register("bash", require('tools/bash'))
 
 function generate_tool_list()
 	local tl = {}
@@ -197,7 +198,7 @@ local function run()
 
 	-- Sigh, global since this isn't a class and we need it in other functions
 	log_file = open_log_file(session_uuid)
-	log_file:debug_section("tools", true)
+--	log_file:debug_section("tools", true)
 
 	log_file:write_json( { start_timestamp = 1234 } );
 
