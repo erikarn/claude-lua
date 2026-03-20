@@ -49,7 +49,8 @@ function Tools:lookup_and_create(tn)
 	end
 
 	t = self.tools[tn]
-	return t.create()
+	local rt <close> = t.create()
+	return rt
 end
 
 -- Return a list of tool names as a hash table.
@@ -85,8 +86,11 @@ function Tools:get_tool_schema(tn)
 	-- to extract the schema.  This isn't very efficient.
 	-- Ideally the tool will export the schema as a class
 	-- attribute or function, not an object instance function.
+	--
+	-- TODO: migrate the schema lookup to a class static function
+	-- so I don't have to call create() first
+	--
 	local t = self.tools[tn]
-	local tc = t.create()
 	return t:get_schema()
 end
 
@@ -104,7 +108,7 @@ end
 function Tools:get_tool_schema_list()
 	local ts = {}
 	for tn, tc in pairs(self.tools) do
-		local t = tc.create()
+		local t <close> = tc.create()
 		table.insert(ts, t:get_schema())
 	end
 	return ts
