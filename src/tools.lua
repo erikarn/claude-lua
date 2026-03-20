@@ -49,7 +49,11 @@ function Tools:lookup_and_create(tn)
 	end
 
 	t = self.tools[tn]
-	local rt <close> = t.create()
+
+	-- Note: can't create it with <close> ; it ends up having __close()
+	-- called when this variable instance is deleted, even if i'm just
+	-- returning it..
+	local rt = t.create()
 	return rt
 end
 
