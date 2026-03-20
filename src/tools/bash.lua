@@ -17,6 +17,10 @@
 --   print(r.exit_code, r.stdout, r.stderr)
 --   local r = session:execute({ restart = true })
 
+-- TODO:
+--
+-- implement a __close() metamethod!  To clean up the process state, pipes, etc
+
 local unistd = require("posix.unistd")
 local poll   = require("posix.poll")
 local wait   = require("posix.sys.wait")
@@ -25,7 +29,8 @@ local posix  = require("posix")
 
 -- ── Class table ───────────────────────────────────────────────────────────────
 
-local BashSession = {}
+local BashSession = {
+}
 BashSession.__index = BashSession
 
 -- ── Config defaults ───────────────────────────────────────────────────────────
@@ -148,10 +153,25 @@ function BashSession:create(opts)
         for k, v in pairs(opts) do m.config[k] = v end
     end
 
+    -- Note: this means calling this to eg get the schema is spawning bash.
+    -- Eww.
+    --
     local proc, err = spawn(m.config)
     if not proc then error("BashSession.new: " .. err) end
     m._proc = proc
     return m
+end
+
+-- Explicit close for "local var <close> = bash.create()"
+--
+function BashSession:__close()
+	print("Called, closing!\n")
+	self:_kill()
+end
+
+function BashSession:__gc()
+	print("Called, gc'ing!\n")
+	self:_kill()
 end
 
 -- ── restart ───────────────────────────────────────────────────────────────────

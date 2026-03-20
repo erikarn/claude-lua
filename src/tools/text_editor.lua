@@ -17,6 +17,9 @@ function TextEditor:create()
 	return m
 end
 
+function TextEditor:__close()
+end
+
 function TextEditor:get_schema()
 	return {
 		name = "str_replace_based_edit_tool",

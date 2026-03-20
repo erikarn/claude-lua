@@ -15,6 +15,9 @@ function Weather:create()
 	return m
 end
 
+function Weather:__close()
+end
+
 function Weather:get_schema()
 	return {
 		name = "get_weather",
