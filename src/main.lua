@@ -85,11 +85,15 @@ local function run_input(input_content, tool_request_list)
 
 	table.insert(messages, { role = "user", content = input_content})
 
-	log_file:dlog("conversation", json.encode(messages))
+	-- XXX TODO: this is very spammy; we likely should persist this somewhere
+	-- separate to be able to restart things.
+	--
+	-- log_file:dlog("conversation", json.encode(messages))
 
 ::retry::
 	local an_req = anthropic3.create()
 	an_req:set_api_key(API_KEY)
+	an_req:set_log(log_file)
 	local stream, err_state = an_req:stream_messages(messages,
 	    tool_list:get_tool_schema_list(), nil)
 	if (stream == nil) then
@@ -143,7 +147,7 @@ local function run_input(input_content, tool_request_list)
 			--
 			-- Fire off the tool request to populate in the output stream.
 			if state.done == true and state.needs_tool == true then
-				log_file:dprint("tools", "tool request: " .. json.encode(state.pending_tool))
+				log_file:dlog("tools", "tool request: " .. json.encode(state.pending_tool))
 				-- do a full copy
 				local tool_req = {
 					id = state.pending_tool.id,
@@ -200,6 +204,7 @@ local function run()
 	log_file = open_log_file(session_uuid)
 --	log_file:debug_section("tools", true)
 
+	-- XXX TODO: write a real timestamp
 	log_file:write_json( { start_timestamp = 1234 } );
 
 	while true do
@@ -222,13 +227,13 @@ local function run()
 			-- populate a user request with the tool responses, and then send it over.
 			while (#tool_request_list > 0) do
 				local tl = {}
-				log_file:dprint("tools", "tool count: " .. #tool_request_list)
+				log_file:dlog("tools", "tool count: " .. #tool_request_list)
 				for _, v in ipairs(tool_request_list) do
-					log_file:dprint("tools", "tool name: " .. v.name)
-					local tool = tool_list:lookup_and_create(v.name)
+					log_file:dlog("tools", "tool name: " .. v.name)
+					local tool <close> = tool_list:lookup_and_create(v.name)
 					if tool == nil then
 						-- TODO: maybe make this an error print/log?
-						log_file:dprint("tools", "tool lookup failed")
+						log_file:dlog("tools", "tool lookup failed")
 						table.insert(tl, {
 							type = "tool_result",
 							tool_use_id = v.id,
@@ -236,14 +241,17 @@ local function run()
 							content = "The requested tool doesn't exist!",
 						});
 					else
-						log_file:dprint("tools", "tool request: " .. json.encode(v))
+--						print("created tool")
+						log_file:dlog("tools", "tool request: " .. json.encode(v))
+--						print("running tool")
 						local tr = tool:run(v)
 						-- populate common info
 						tr.type = "tool_result"
 						tr.tool_use_id = v.id
+--						print("tool result:" .. tr.content)
 
 						-- log
-						log_file:dprint("tools", "tool response: " .. json.encode(tr))
+						log_file:dlog("tools", "tool response: " .. json.encode(tr))
 
 						-- insert into the request/response flow
 						table.insert(tl, tr)

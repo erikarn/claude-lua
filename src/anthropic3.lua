@@ -15,6 +15,12 @@ function Anthropic:set_api_key(api_key)
 	self.api_key = api_key
 end
 
+-- Set the log function to debug log to
+--
+function Anthropic:set_log(log)
+	self.log = log
+end
+
 function Anthropic:get_init_state()
 	local state = {
 	    done          = false,
@@ -65,6 +71,7 @@ function Anthropic:stream_messages(messages, tools, opts)
         model      = opts.model      or "claude-sonnet-4-20250514",
         max_tokens = opts.max_tokens or 1024,
         stream     = true,            -- enable SSE streaming
+	cache_control = { type = "ephemeral" },
         messages   = messages,
 	tools = tools,
     }
@@ -75,8 +82,11 @@ function Anthropic:stream_messages(messages, tools, opts)
 
     local body = json.encode(payload)
 
---    print(string.format("[DEBUG] payload; %d bytes, %d entries\n", #body, #payload.messages))
---    print("[debug] request body: " .. body)
+    self.log:dlog("anthropic",
+        string.format("payload; %d bytes, %d entries\n", #body, #payload.messages))
+
+    -- XXX TODO: this is going to be a VERY spammy thing to log!
+    -- self.log:dlog("anthropic", "request body: " .. body)
 
     -- build request
     local req = http_request.new_from_uri("https://api.anthropic.com/v1/messages")
@@ -118,11 +128,11 @@ end
 function Anthropic:parse_sse_line(line, state)
     if line:match("^event:") then
         state.event = line:match("^event:%s*(.+)$")
---	print("[DEBUG] state.event = " .. state.event)
+	self.log:dlog("anthropic", "state.event = " .. state.event)
 
     elseif line:match("^data:") then
         local data_str = line:match("^data:%s*(.+)$")
---	print("[DEBUG] data: = " .. data_str)
+	self.log:dlog("anthropic", "data: = " .. data_str)
         if data_str == "[DONE]" then state.done = true; return end
 
         local data, _, err = json.decode(data_str)
@@ -130,6 +140,7 @@ function Anthropic:parse_sse_line(line, state)
             io.stderr:write("JSON parse error: " .. tostring(err) .. "\n")
             return
         end
+	self.log:dlog("anthropic", "data = " .. json.encode(data))
 
         if data.type == "message_start" then
             local msg = data.message
