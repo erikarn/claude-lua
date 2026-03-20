@@ -53,6 +53,7 @@ end
 -- model: <model string>
 -- system: <system prompt string>
 -- max_tokens: <maximum tokens>
+-- timeout: <request timeout in seconds>
 -- 
 function Anthropic:stream_messages(messages, tools, opts)
     opts = opts or {}
@@ -70,6 +71,7 @@ function Anthropic:stream_messages(messages, tools, opts)
     if opts.system then payload.system = opts.system end
     if opts.thinking then payload.thinking = opts.thinking end
     if opts.max_tokens then payload.max_tokens = opts.max_tokens end
+    opts.timeout = opts.timeout or 30
 
     local body = json.encode(payload)
 
@@ -90,9 +92,12 @@ function Anthropic:stream_messages(messages, tools, opts)
     req.headers:upsert("accept",           "text/event-stream")
     req:set_body(body)
 
-    local headers, stream, errno = req:go(30)  -- 30s timeout
+    local headers, stream, errno = req:go(opts.timeout)
     if not headers then
-        error("request failed: " .. tostring(stream) .. "errno: " .. errno)
+	-- TODO: error logging API
+        print("request failed: " .. tostring(stream) .. "errno: " .. errno)
+	local errstate = { code = 0, content = "Request timeout" }
+	return nil, errstate
     end
 
     local status = tonumber(headers:get(":status"))
