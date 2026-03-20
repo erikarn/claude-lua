@@ -115,6 +115,7 @@ function Clog:dlog(sstr, dstr)
 	-- TODO: configurable debug logging, obviously
 	local str = json.encode({ type = "debug", content = { section = sstr, text = dstr }})
 	self.fh:write(str .. ",\n")
+	self.fh:flush() -- XXX
 	return true
 end
 
