@@ -27,12 +27,6 @@ tool_list:register("get_weather", require('tools/weather'))
 tool_list:register("str_replace_based_edit_tool", require('tools/text_editor'))
 tool_list:register("bash", require('tools/bash'))
 
-function generate_tool_list()
-	local tl = {}
-	table.insert(tl, weather_inst:get_schema())
-	return tl
-end
-
 -- readline.historyload(os.getenv("HOME") .. "/.claude_history")
 -- readline.historysetmaxlen(1000)
 
