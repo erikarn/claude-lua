@@ -1,199 +1,224 @@
--- anthropic.lua
--- Minimal Anthropic API client for Lua 5.4
+local http_request = require("http.request")
+local json         = require("dkjson")
 
-local socket = require("socket")
-local ssl    = require("ssl")
-local json   = require("dkjson")
+Anthropic = {}
+Anthropic.__index = Anthropic
 
-local M = {}
+function Anthropic:create()
+	local m = {}
+	setmetatable(m, Anthropic)
+	-- TODO: local variables
+	return m
+end
 
--- ── configuration ────────────────────────────────────────────────────────────
+function Anthropic:set_api_key(api_key)
+	self.api_key = api_key
+end
 
-M.config = {
-    api_key = os.getenv("ANTHROPIC_API_KEY"),
-    model   = "claude-sonnet-4-20250514",
-    host    = "api.anthropic.com",
-    port    = 443,
-    version = "2023-06-01",
-}
+-- Set the log function to debug log to
+--
+function Anthropic:set_log(log)
+	self.log = log
+end
 
--- ── TLS socket helper ─────────────────────────────────────────────────────────
-
-local function make_tls_socket(host, port)
-    local sock, err = socket.tcp()
-    if not sock then return nil, err end
-
-    sock:settimeout(30)
-
-    local ok, err = sock:connect(host, port)
-    if not ok then return nil, "connect failed: " .. tostring(err) end
-
-    print("[debug] luasec version: " .. tostring(ssl._VERSION))
-
-    local params = {
-	mode = "client",
-	protocol = "any",
-	verify = "peer",
-        -- cafile  = "/etc/ssl/cert.pem",  -- FreeBSD default CA bundle
-	cafile = "/usr/local/share/certs/ca-root-nss.crt",
-    }
-
-    -- wrap in TLS
-    local tls_sock, err = ssl.wrap(sock, params)
-    if not tls_sock then return nil, "ssl.wrap failed: " .. tostring(err) end
-
-    tls_sock:sni("api.anthropic.com")
-
-    local ok, err = tls_sock:dohandshake()
-    if not ok then return nil, "handshake failed: " .. tostring(err) end
-
-    return tls_sock
+function Anthropic:get_init_state()
+	local state = {
+	    done          = false,
+	    event         = nil,
+	    response_text = nil,
+	    reponse_set   = false,
+	    -- message metadata
+	    message_id    = nil,
+	    model         = nil,
+	    input_tokens  = nil,
+	    output_tokens = nil,
+	    stop_reason   = nil,
+	    -- content block tracking
+	    current_index = nil,
+	    block_type    = nil,
+	    -- tool use
+	    tool_name     = nil,
+	    tool_id       = nil,
+	    tool_json     = nil,
+	    pending_tool  = nil,
+	    needs_tool    = false,
+	    -- error
+	    error         = nil,
+	}
+	return state
 end
 
 
--- ── raw HTTP/1.1 request ──────────────────────────────────────────────────────
-
-local function decode_chunked(body)
-    local result = {}
-    local pos = 1
-    while pos <= #body do
-        -- find end of chunk size line
-        local size_end = body:find("\r\n", pos, true)
-        if not size_end then break end
-        
-        local size_str = body:sub(pos, size_end - 1)
-        -- strip chunk extensions if any
-        size_str = size_str:match("^%x+")
-        local chunk_size = tonumber(size_str, 16)
-        
-        if not chunk_size or chunk_size == 0 then break end
-        
-        local chunk_start = size_end + 2
-        local chunk_end   = chunk_start + chunk_size - 1
-        result[#result + 1] = body:sub(chunk_start, chunk_end)
-        pos = chunk_end + 3  -- skip trailing \r\n
-    end
-    return table.concat(result)
-end
-
-local function http_post(host, port, path, headers, body)
-    local sock, err = make_tls_socket(host, port)
-    if not sock then return nil, err end
-
-    -- build request
-    local req_lines = {
-        string.format("POST %s HTTP/1.1", path),
-        string.format("Host: %s", host),
-        "Connection: close",
-    }
-    for k, v in pairs(headers) do
-        req_lines[#req_lines + 1] = string.format("%s: %s", k, v)
-    end
-    req_lines[#req_lines + 1] = string.format("Content-Length: %d", #body)
-    req_lines[#req_lines + 1] = ""  -- blank line ending headers
-    req_lines[#req_lines + 1] = ""
-
-    local request = table.concat(req_lines, "\r\n") .. body
-
-    -- send
-    local ok, err = sock:send(request)
-    if not ok then sock:close(); return nil, "send failed: " .. tostring(err) end
-
-    -- receive full response
-    local response = {}
-    while true do
-        local chunk, err, partial = sock:receive(4096)
-        if chunk then
-            response[#response + 1] = chunk
-        elseif partial and #partial > 0 then
-            response[#response + 1] = partial
-            break
-        else
-            break
-        end
-    end
-    sock:close()
-
-    local raw = table.concat(response)
-
-    -- split headers / body
-    local header_section, body_section = raw:match("^(.-)\r\n\r\n(.*)$")
-    if not header_section then
-        return nil, "malformed HTTP response"
-    end
-
-    local is_chunked = header_section:lower():find("transfer%-encoding:%s*chunked") ~= nil
-    local final_body
-
-    print("[debug] is_chunked: " .. tostring(is_chunked))
-
-    if is_chunked then
-	    final_body = decode_chunked(body_section)
-   else
-	    final_body = body_section
-    end
-
-    -- extract status code
-    local status = tonumber(header_section:match("HTTP/%d%.%d (%d+)"))
-
-    return { status = status, body = final_body }
-end
-
--- ── public API ────────────────────────────────────────────────────────────────
-
---- Send a messages request to the Anthropic API.
--- @param messages  table  Array of {role, content} tables
--- @param opts      table  Optional overrides: model, max_tokens, system
--- @return          table  Parsed response, or nil + error string
-function M.messages(messages, opts)
+-- Connect to the API and send the given message array as the
+-- request state.
+--
+-- There are a variety of options supported in the various API
+-- options:
+--
+-- thinking: { type = <enabled|disabled>, budget_tokens = <number> }
+-- model: <model string>
+-- system: <system prompt string>
+-- max_tokens: <maximum tokens>
+-- timeout: <request timeout in seconds>
+-- 
+function Anthropic:stream_messages(messages, tools, opts)
     opts = opts or {}
 
-    assert(M.config.api_key, "ANTHROPIC_API_KEY not set")
-
+    -- TODO: this assumes we're going to use SSE streaming, rather than
+    -- the single json message request/response API.
+    --
     local payload = {
-        model      = opts.model      or M.config.model,
+        model      = opts.model      or "claude-sonnet-4-20250514",
         max_tokens = opts.max_tokens or 1024,
+        stream     = true,            -- enable SSE streaming
+	cache_control = { type = "ephemeral" },
         messages   = messages,
+	tools = tools,
     }
-    if opts.system then
-        payload.system = opts.system
-    end
+    if opts.system then payload.system = opts.system end
+    if opts.thinking then payload.thinking = opts.thinking end
+    if opts.max_tokens then payload.max_tokens = opts.max_tokens end
+    opts.timeout = opts.timeout or 30
 
     local body = json.encode(payload)
 
-    local headers = {
-        ["Content-Type"]      = "application/json",
-        ["x-api-key"]         = M.config.api_key,
-        ["anthropic-version"] = M.config.version,
-    }
+    self.log:dlog("anthropic",
+        string.format("payload; %d bytes, %d entries\n", #body, #payload.messages))
 
-    local resp, err = http_post(
-        M.config.host,
-        M.config.port,
-        "/v1/messages",
-        headers,
-        body
-    )
+    -- XXX TODO: this is going to be a VERY spammy thing to log!
+    -- self.log:dlog("anthropic", "request body: " .. body)
 
-    if not resp then return nil, err end
+    -- build request
+    local req = http_request.new_from_uri("https://api.anthropic.com/v1/messages")
 
-    if resp.status ~= 200 then
-        return nil, string.format("API error %d: %s", resp.status, resp.body)
+    -- Force HTTP/1.1 for now; HTTP/2 is hanging when the body is greater
+    -- than 1024 bytes and I'm not sure why just yet.
+    req.version = 1.1
+
+    req.headers:upsert(":method",          "POST")
+    req.headers:upsert("content-type",     "application/json")
+    req.headers:upsert("x-api-key",        self.api_key)
+    req.headers:upsert("anthropic-version","2023-06-01")
+    req.headers:upsert("accept",           "text/event-stream")
+    req:set_body(body)
+
+    local headers, stream, errno = req:go(opts.timeout)
+    if not headers then
+	-- TODO: error logging API
+        print("request failed: " .. tostring(stream) .. "errno: " .. errno)
+	local errstate = { code = 0, content = "Request timeout" }
+	return nil, errstate
     end
 
-    local decoded, _, err = json.decode(resp.body)
-    if not decoded then return nil, "JSON decode failed: " .. tostring(err) end
-
-    return decoded
-end
-
---- Convenience: extract text from a messages response.
-function M.get_text(response)
-    if not response or not response.content then return nil end
-    for _, block in ipairs(response.content) do
-        if block.type == "text" then return block.text end
+    local status = tonumber(headers:get(":status"))
+    if status ~= 200 then
+	local errstate = { code = status, content = stream:get_body_as_string() }
+	return nil, errstate
     end
-    return nil
+
+    return stream, nil
 end
 
-return M
+-- SSE parser - Anthropic sends lines like:
+--   event: content_block_delta
+--   data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}
+--
+-- TODO:
+--
+-- + event: content_block_delta; type = signature / thinking_delta
+--   (read the docs - I think the pieces are accumulated as normal like the other
+--   delta bits, and then stored as one chunk for regurgitating later.  There's
+--   an index field too, for multiple thinking blocks.)
+--
+-- + TODO: like, literally the rest of them
+--
+
+function Anthropic:parse_sse_line(line, state)
+    if line:match("^event:") then
+        state.event = line:match("^event:%s*(.+)$")
+	self.log:dlog("anthropic", "state.event = " .. state.event)
+
+    elseif line:match("^data:") then
+        local data_str = line:match("^data:%s*(.+)$")
+	self.log:dlog("anthropic", "data: partial string = " .. data_str)
+        if data_str == "[DONE]" then state.done = true; return end
+
+        local data, _, err = json.decode(data_str)
+        if not data then
+            io.stderr:write("JSON parse error: " .. tostring(err) .. "\n")
+            return
+        end
+
+	-- TODO: do we really need all of this?
+	self.log:dlog("anthropic", "message: " .. json.encode(data))
+
+	-- TODO: thinking messages!
+
+        if data.type == "message_start" then
+            local msg = data.message
+            state.message_id   = msg.id
+            state.model        = msg.model
+            state.input_tokens = msg.usage and msg.usage.input_tokens
+	    state.done = false
+
+        elseif data.type == "content_block_start" then
+            state.current_index = data.index
+            state.block_type    = data.content_block.type
+	    -- if type == "text" then blank out the response text
+	    if data.content_block.type == "text" then
+		state.response_text = nil
+		state.response_set = false
+	    end
+            -- if type == "tool_use", capture tool name:
+            if data.content_block.type == "tool_use" then
+                state.tool_name = data.content_block.name
+                state.tool_id   = data.content_block.id
+                state.tool_json = ""  -- accumulate input_json_delta chunks
+            end
+
+        elseif data.type == "content_block_delta" then
+            local delta = data.delta
+            if delta.type == "text_delta" then
+		state.response_text = (state.response_text or "") .. delta.text
+		state.response_set = true
+            elseif delta.type == "input_json_delta" then
+                -- accumulate tool input JSON
+                state.tool_json = (state.tool_json or "") .. delta.partial_json
+            end
+
+        elseif data.type == "content_block_stop" then
+            if state.block_type == "tool_use" and state.tool_json then
+                -- tool input is now complete - parse and handle it
+                local tool_input = json.decode(state.tool_json)
+                state.pending_tool = {
+                    id    = state.tool_id,
+                    name  = state.tool_name,
+                    input = tool_input,
+                }
+                state.tool_json = nil
+            end
+
+        elseif data.type == "message_delta" then
+            state.stop_reason   = data.delta.stop_reason
+            state.output_tokens = data.usage and data.usage.output_tokens
+            if state.stop_reason == "tool_use" then
+                state.needs_tool = true
+            end
+
+        elseif data.type == "message_stop" then
+            state.done = true
+
+        elseif data.type == "error" then
+	    -- TODO: don't write this here; just return it up for the caller to handle it!
+            io.stderr:write("stream error: " .. json.encode(data) .. "\n")
+            state.done  = true
+            state.error = data.error
+        end
+
+    elseif line == "" then
+        state.event = nil
+    end
+end
+
+
+return Anthropic

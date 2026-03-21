@@ -1,6 +1,6 @@
 -- main.lua
 
-local anthropic3 = require("anthropic3")
+local anthropic = require("anthropic")
 local readline = require("readline")
 local uuid = require('uuid')
 local lfs = require('lfs')
@@ -92,7 +92,7 @@ local function run_input(input_content, tool_request_list)
 	--
 	-- log_file:dlog("conversation", json.encode(messages))
 
-	local an_req = anthropic3.create()
+	local an_req = anthropic.create()
 	an_req:set_api_key(API_KEY)
 	an_req:set_log(log_file)
 ::retry::
