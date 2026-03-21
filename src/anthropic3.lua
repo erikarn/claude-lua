@@ -123,6 +123,14 @@ end
 --   event: content_block_delta
 --   data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}
 --
+-- TODO:
+--
+-- + event: content_block_delta; type = signature / thinking_delta
+--   (read the docs - I think the pieces are accumulated as normal like the other
+--   delta bits, and then stored as one chunk for regurgitating later.  There's
+--   an index field too, for multiple thinking blocks.)
+--
+-- + TODO: like, literally the rest of them
 --
 
 function Anthropic:parse_sse_line(line, state)
@@ -132,7 +140,7 @@ function Anthropic:parse_sse_line(line, state)
 
     elseif line:match("^data:") then
         local data_str = line:match("^data:%s*(.+)$")
-	self.log:dlog("anthropic", "data: = " .. data_str)
+	self.log:dlog("anthropic", "data: partial string = " .. data_str)
         if data_str == "[DONE]" then state.done = true; return end
 
         local data, _, err = json.decode(data_str)
@@ -140,7 +148,11 @@ function Anthropic:parse_sse_line(line, state)
             io.stderr:write("JSON parse error: " .. tostring(err) .. "\n")
             return
         end
-	self.log:dlog("anthropic", "data = " .. json.encode(data))
+
+	-- TODO: do we really need all of this?
+	self.log:dlog("anthropic", "message: " .. json.encode(data))
+
+	-- TODO: thinking messages!
 
         if data.type == "message_start" then
             local msg = data.message
@@ -197,6 +209,7 @@ function Anthropic:parse_sse_line(line, state)
             state.done = true
 
         elseif data.type == "error" then
+	    -- TODO: don't write this here; just return it up for the caller to handle it!
             io.stderr:write("stream error: " .. json.encode(data) .. "\n")
             state.done  = true
             state.error = data.error
