@@ -9,6 +9,14 @@ general flow
   their own states (tools/tool state, conversation state, etc) so I can
   build more complicated agent control flows.
 
+* (done) add initial caching so i don't blow through tokens so fast
+
+* add logic to retry if i hit pause_run, max_tokens, etc.
+
+* notably for max_tokens i likely need to ask if the token limit can be
+  bumped up before continuing, as 1024 output tokens isn't enough for
+  code generation.
+
 tool handling
 =============
 
@@ -35,8 +43,6 @@ sandboxing
 conversation history
 ====================
 
-(tbd)
-
- * if i don't fetch a tool response and the conversation flow
+ * (done) if i don't fetch a tool response and the conversation flow
    has a tool invocation, then subsequent requests will also
    trigger the tool invocation?  I need to dig into this a bit more.
