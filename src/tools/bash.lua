@@ -201,6 +201,27 @@ function BashSession:get_schema()
 	}
 end
 
+-- Return a string indicating what we're doing
+
+function BashSession:get_ui_label(req)
+	if not req.input.command then
+		return {
+			content = "(missing input, error)"
+		}
+	end
+
+	if req.input.restart then
+		return {
+			content = "(restart shell)"
+		}
+	end
+
+	return {
+		content = "Running: " .. req.input.command
+	}
+
+end
+
 -- ── execute ───────────────────────────────────────────────────────────────────
 
 function BashSession:run(req)

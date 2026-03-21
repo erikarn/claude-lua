@@ -396,6 +396,13 @@ function TextEditor:cmd_insert(req)
 	}
 end
 
+function TextEditor:get_ui_label(req)
+	return {
+		content = "Calling " .. (req.input.command or "<missing command>")
+		    .. " on " .. (req.input.path or "<missing path>")
+	}
+end
+
 -- Return a valid response content block for the given input
 --
 function TextEditor:run(req)
@@ -411,6 +418,11 @@ function TextEditor:run(req)
 		    is_error = true,
 		    content = "Error: undo_edit is not supported in text_editor_20250728",
 	        }
+	elseif command == nil then
+		return {
+		    is_error = true,
+		    content = "Error: missing command field"
+		}
 	else
 		return {
 		    is_error = true,

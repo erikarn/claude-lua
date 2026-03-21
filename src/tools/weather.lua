@@ -35,6 +35,13 @@ function Weather:get_schema()
 	}
 end
 
+function Weather:get_ui_label(req)
+	-- TODO: handl missing location
+	return {
+		content = "Weather lookup for: " .. req.location
+	}
+end
+
 -- Return a valid response content block for the given input
 --
 function Weather:run(input)
