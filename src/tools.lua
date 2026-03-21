@@ -43,7 +43,7 @@ end
 --
 function Tools:lookup_and_create(tn)
 	local t
-	print("[DEBUG] Called; tn=" .. tn)
+--	print("[DEBUG] Called; tn=" .. tn)
 	if not self.tools[tn] then
 		return nil
 	end
