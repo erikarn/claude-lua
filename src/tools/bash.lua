@@ -201,6 +201,12 @@ function BashSession:get_schema()
 	}
 end
 
+function BashSession:get_properties()
+	return {
+		persistent = true
+	}
+end
+
 -- Return a string indicating what we're doing
 
 function BashSession:get_ui_label(req)

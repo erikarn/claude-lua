@@ -27,6 +27,12 @@ function TextEditor:get_schema()
 	}
 end
 
+function TextEditor:get_properties()
+	return {
+		persistent = false
+	}
+end
+
 function TextEditor:sanitize_path(path)
 	if path:find("%.%./") or path:find("/%.%.") or path == ".." then
 		return nil, "Error: path traversal not allowed"

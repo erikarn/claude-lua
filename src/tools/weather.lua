@@ -35,6 +35,12 @@ function Weather:get_schema()
 	}
 end
 
+function Weather:get_properties()
+	return {
+		persistent = false
+	}
+end
+
 function Weather:get_ui_label(req)
 	-- TODO: handl missing location
 	return {
