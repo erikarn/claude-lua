@@ -69,6 +69,8 @@ end
 -- Run the input, return a list of tools that need to be run and fed
 -- back into the API.
 --
+-- Returns {true|false}, { stop_reason = stop_reason }
+--
 local function run_input(input_content, tool_request_list)
 	-- Assemble the messages with the history
 	local messages = {}
@@ -90,10 +92,10 @@ local function run_input(input_content, tool_request_list)
 	--
 	-- log_file:dlog("conversation", json.encode(messages))
 
-::retry::
 	local an_req = anthropic3.create()
 	an_req:set_api_key(API_KEY)
 	an_req:set_log(log_file)
+::retry::
 	local stream, err_state = an_req:stream_messages(messages,
 	    tool_list:get_tool_schema_list(), nil)
 	if (stream == nil) then
@@ -114,7 +116,9 @@ local function run_input(input_content, tool_request_list)
 			os.execute('sleep 30')
 			goto retry
 		end
-		return false
+		-- TODO: return a better error state for it to handle
+		-- TODO: once I return stuff, the caller can sleep/retry, not here
+		return false, nil
 	end
 
 	local state = an_req:get_init_state()
@@ -146,6 +150,7 @@ local function run_input(input_content, tool_request_list)
 
 			--
 			-- Fire off the tool request to populate in the output stream.
+			--
 			if state.done == true and state.needs_tool == true then
 				log_file:dlog("tools", "tool request: " .. json.encode(state.pending_tool))
 				-- do a full copy
@@ -155,6 +160,17 @@ local function run_input(input_content, tool_request_list)
 					input = state.pending_tool.input,
 				}
 				table.insert(tool_request_list, tool_req)
+			end
+
+			--
+			-- If we get state.done, at least log why to the console
+			-- so I can see what's going on here.  There's going to be a bunch
+			-- of things I need to handle and turn around, like pause_turn,
+			-- max_tokens, model_context_window_exceeded, etc.
+			--
+			if state.done == true then
+				-- TODO: this really needs to be communicated back better
+				print("\n[STATE] done, stop_reason: " .. state.stop_reason .. "\n")
 			end
 			if state.done then break end
 ::next_single_line::
@@ -183,7 +199,7 @@ local function run_input(input_content, tool_request_list)
 	log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
 	print(string.format("[tokens] %d input tokens, %d output tokens\n", state.input_tokens, state.output_tokens))
 
-	return true
+	return true, { stop_reason = state.stop_reason }
 end
 
 local function set_rng_fn()
@@ -218,13 +234,26 @@ local function run()
 			log_file:write_json({ block = "input", input_str = input })
 --			readline.historysave(os.getenv("HOME") .. "/.claude_history")
 --			-- TODO: log intermediary steps
-			local r = run_input({ { type = "text", text = input } }, tool_request_list)
+			local r, retrun = run_input({ { type = "text", text = input } }, tool_request_list)
+
+			-- Permanent error
+			--
 			if r == false then
 				break
 			end
 
+			-- TODO: if we get max_tokens then we'll need to append
+			-- a user line like "please continue", bump up the token limit and
+			-- resubmit for more work.
+			--
+			-- This can be easily hit by using the 1024 token default
+			--
+			if retrun.stop_reason == "max_tokens" then
+			end
+
 			-- If tool_request_list is not nil then we need to run the tool requests,
 			-- populate a user request with the tool responses, and then send it over.
+			-- 
 			while (#tool_request_list > 0) do
 				local tl = {}
 				log_file:dlog("tools", "tool count: " .. #tool_request_list)
@@ -243,7 +272,7 @@ local function run()
 					else
 --						print("created tool")
 						log_file:dlog("tools", "tool request: " .. json.encode(v))
---						print("running tool")
+						print("[TOOL] [" .. v.name .. "] " .. tool:get_ui_label(v).content .. "\n")
 						local tr = tool:run(v)
 						-- populate common info
 						tr.type = "tool_result"
@@ -260,9 +289,16 @@ local function run()
 
 				tool_request_list = {}
 
-				local r = run_input(tl, tool_request_list)
+				local r, retrun = run_input(tl, tool_request_list)
+
+				-- Perm failure? break
 				if r == false then
 					break
+				end
+
+				-- TODO max tokens again, see above, sigh
+				--
+				if retrun.stop_reason == "max_tokens" then
 				end
 			end
 
