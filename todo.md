@@ -31,9 +31,17 @@ tool handling
   spawn a shell each invocation (not just for efficiency, but to
   persist state like current dir, environment variables, etc.)
 
-* add lua-5.4 explicit ```__close``` metamethod in the various
+* (done) add lua-5.4 explicit ```__close``` metamethod in the various
   class instances - again especially important for bash, which i want
   to make sure explicitly tears down and frees the process/pipes.
+
+* bash - don't create the bash instance upon object creation - when
+  the first request is made, fail it so the AI controller knows it
+  needs to 'restart' the bash session.
+
+  That way when persistent/restartable actors/agents show up, they
+  won't need to worry about trying to persist a bash state between
+  runs.
 
 sandboxing
 ==========
