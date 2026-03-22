@@ -47,9 +47,8 @@ function Weather:get_properties()
 end
 
 function Weather:get_ui_label(req)
-	-- TODO: handl missing location
 	return {
-		content = "Weather lookup for: " .. req.location
+		content = "Weather lookup for: " .. req.input.location or "<missing>"
 	}
 end
 
@@ -211,7 +210,9 @@ function Weather:format_weather_response(weather_data)
 end
 
 -- Return a valid response content block for the given input
-function Weather:run(input)
+function Weather:run(req)
+	local input = req.input
+
 	-- Validate input
 	local valid, error_msg = self:validate_input(input)
 	if not valid then
