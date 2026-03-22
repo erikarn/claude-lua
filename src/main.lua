@@ -15,7 +15,7 @@ local log_file = nil
 
 local tool_list = tools.create()
 
-Config = config:create()
+Config = config:new()
 Config:load(os.getenv("HOME") .. "/.claude_cli/conf.json")
 
 -- TODO: we're statically using this for now,

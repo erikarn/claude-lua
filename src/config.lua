@@ -1,16 +1,18 @@
 -- Class to represent configuration related stuff
 --
+-- For now this is a singleton.
 
 local json = require("dkjson")
 
 local Config = {}
 Config.__index = Config
 
-function Config:create(opts)
-	local m = {}
-	setmetatable(m, Config)
-	m.config = {}
-	return m
+function Config:new(opts)
+	if not Config._instance then
+		local m = {}
+		Config._instance = setmetatable(m, self)
+	end
+	return Config._instance
 end
 
 -- Load the given configuration file into the config array
@@ -34,4 +36,4 @@ function Config:load(fn)
 	return true
 end
 
-return Config
+return Config:new()
