@@ -26,6 +26,7 @@ local poll   = require("posix.poll")
 local wait   = require("posix.sys.wait")
 local signal = require("posix.signal")
 local posix  = require("posix")
+local config = require("config")
 
 -- ── Class table ───────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ BashSession.__index = BashSession
 
 local DEFAULTS = {
     timeout_seconds  = 30,
-    allowed_root     = "/home/adrian/sandbox",
+    allowed_root     = "/TODO", -- XXX eww, this needs to be empty and enforced its set to SOMETHING
     max_output_chars = 100000,
 }
 
@@ -148,7 +149,28 @@ function BashSession:create(opts)
     local m = {}
     setmetatable(m, BashSession)
     m.local_config = {}
+    m.config = config:new()
+
+    -- Defaults
     for k, v in pairs(DEFAULTS) do m.local_config[k] = v end
+
+    -- Override with global configuration fields
+    --
+    -- This always has to be provided!
+    --
+    -- XXX TODO: handle if m.config.config.tools is empty or
+    -- m.config.config.tools.bash is empty!
+    --
+    m.local_config.sandbox = m.config.config.sandbox.path
+    if m.config.config.tools.bash.timeout_seconds ~= nil then
+    	m.local_config.timeout_seconds = m.config.config.tools.bash.timeout_seconds
+    end
+    if m.config.config.tools.bash.max_output_chars ~= nil then
+        m.local_config.max_output_chars = m.config.config.tools.bash.max_output_chars
+    end
+
+    -- Override with provided opts (eg if this object wants a different timeout)
+    --
     if opts then
         for k, v in pairs(opts) do m.local_config[k] = v end
     end
