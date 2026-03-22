@@ -202,9 +202,15 @@ function TextEditor:cmd_view_file(req, path)
 	local output = table.concat(result, "\n")
 
 	-- Respect max_characters if set
-	-- if config.max_characters and #output > config.max_characters then
-	-- 	output = output:sub(1, config.max_characters)
-	-- end
+	--
+	-- TODO: update to use global config
+	-- TODO: what should the output say to indicate the maximum size has been reached?
+	--
+	if #output > self.config.config.tools.text_editor.max_output_chars then
+	 	output = output:sub(1, self.config.config.tools.text_editor.max_output_chars)
+		output = output .. string.format("\nText truncated at %d characters\n",
+		    self.config.config.tools.text_editor.max_output_chars)
+	end
 	return {
 	    content = output,
 	}
