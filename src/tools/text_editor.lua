@@ -5,6 +5,7 @@
 --
 
 local json = require('dkjson')
+local config = require('config')
 
 TextEditor = {}
 TextEditor.__index = TextEditor
@@ -14,6 +15,7 @@ function TextEditor:create()
 	local m = {}
 	setmetatable(m, TextEditor)
 	m.locals = {}
+	m.config = config:new()
 	return m
 end
 
@@ -34,10 +36,12 @@ function TextEditor:get_properties()
 end
 
 function TextEditor:sanitize_path(path)
+	local sandbox = self.config.config.sandbox.path
+
 	if path:find("%.%./") or path:find("/%.%.") or path == ".." then
 		return nil, "Error: path traversal not allowed"
 	end
-	if not path:sub(1, #"/home/adrian/sandbox") == "/home/adrian/sandbox" then
+	if not (path:sub(1, #sandbox) == sandbox) then
 		return nil, "Error: path is outside allowed root"
 	end
 	return path
