@@ -7,6 +7,7 @@ local lfs = require('lfs')
 local clog = require('clog')
 local json = require('dkjson')
 local tools = require('tools')
+local config = require('config')
 
 local session_history = {}
 
@@ -14,7 +15,8 @@ local log_file = nil
 
 local tool_list = tools.create()
 
-local API_KEY = os.getenv("ANTHROPIC_API_KEY"):gsub("%s+", "")
+Config = config:create()
+Config:load(os.getenv("HOME") .. "/.claude_cli/conf.json")
 
 -- TODO: we're statically using this for now,
 -- soon we'll want to register tools and then have a way to
@@ -87,7 +89,7 @@ local function run_input(input_content, tool_request_list)
 	-- log_file:dlog("conversation", json.encode(messages))
 
 	local an_req = anthropic.create()
-	an_req:set_api_key(API_KEY)
+	an_req:set_api_key(Config.config.keys.anthropic_api)
 	an_req:set_log(log_file)
 ::retry::
 	local stream, err_state = an_req:stream_messages(messages,
