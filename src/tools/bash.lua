@@ -147,16 +147,16 @@ end
 function BashSession:create(opts)
     local m = {}
     setmetatable(m, BashSession)
-    m.config = {}
-    for k, v in pairs(DEFAULTS) do m.config[k] = v end
+    m.local_config = {}
+    for k, v in pairs(DEFAULTS) do m.local_config[k] = v end
     if opts then
-        for k, v in pairs(opts) do m.config[k] = v end
+        for k, v in pairs(opts) do m.local_config[k] = v end
     end
 
     -- Note: this means calling this to eg get the schema is spawning bash.
     -- Eww.
     --
-    local proc, err = spawn(m.config)
+    local proc, err = spawn(m.local_config)
     if not proc then error("BashSession.new: " .. err) end
     m._proc = proc
     return m
@@ -178,7 +178,7 @@ end
 
 function BashSession:restart()
     self:_kill()
-    local proc, err = spawn(self.config)
+    local proc, err = spawn(self.local_config)
     if not proc then
         return {
             is_error  = true,
@@ -296,7 +296,7 @@ function BashSession:run(req)
     local stdout_buf  = ""
     local stdout_done = false
     local timed_out   = false
-    local deadline    = os.time() + self.config.timeout_seconds
+    local deadline    = os.time() + self.local_config.timeout_seconds
 
     local fds = {
         [self._proc.stdout_r] = { events = { IN = true } },
@@ -338,7 +338,7 @@ function BashSession:run(req)
             is_error  = true,
             content = string.format(
                 "\nError: timed out after %ds — session killed. Send restart to continue.",
-                self.config.timeout_seconds),
+                self.local_config.timeout_seconds),
         }
     end
 
@@ -370,9 +370,10 @@ function BashSession:run(req)
     -- ── Truncate ──────────────────────────────────────────────────────────
 
     local function truncate(s, label)
-        if #s > self.config.max_output_chars then
-            return s:sub(1, self.config.max_output_chars)
-                .. string.format("\n[%s truncated at %d chars]", label, self.config.max_output_chars)
+        if #s > self.local_config.max_output_chars then
+            return s:sub(1, self.local_config.max_output_chars)
+                .. string.format("\n[%s truncated at %d chars]", label,
+		    self.local_config.max_output_chars)
         end
         return s
     end
