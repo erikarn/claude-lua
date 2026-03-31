@@ -165,15 +165,25 @@ function Actor:run_input(input_content, tool_request_list)
 	    self.tool_list:get_tool_schema_list(), nil)
 	if (stream == nil) then
 		local es = json.decode(err_state.content)
+		-- Squirrel the HTTP reponse code in here too
+		es.response_code = err_state.code
+
 		-- API error
 		-- XXX TODO: log!
 		-- XXX TODO: return some action!
 		--
 		self.log_file:dlog("conversation", err_state.content)
+
+		-- Don't uncomment this until the callers of this routine
+		-- handle the HTTP API errors in a suitable way (eg by moving
+		-- the retry into the caller, not here).
+		--
+--		return false, { stop_reason = "api", err_state = es }
+
 		print("[ERROR] code=" .. tostring(err_state.code))
 		print("[ERROR] payload=" .. err_state.content)
 		print("[ERROR] type='" .. es.type .. "'")
---		print("[ERROR] error.type=" .. es.error.type)
+		print("[ERROR] error.type=" .. es.error.type)
 		if (err_state.code == 429 and es.type == "error"
 		    and es.error.type == "rate_limit_error") then
 			-- sigh, lua
@@ -181,9 +191,7 @@ function Actor:run_input(input_content, tool_request_list)
 			os.execute('sleep 30')
 			goto retry
 		end
-		-- TODO: return a better error state for it to handle
-		-- TODO: once I return stuff, the caller can sleep/retry, not here
-		return false, nil
+		return false, { stop_reason = "api", err_state = es }
 	end
 
 	local state = an_req:get_init_state()
@@ -276,6 +284,8 @@ function Actor:run(input)
 	local r, retrun = self:run_input({ { type = "text", text = input } },
 	    tool_request_list)
 
+	-- TODO: handle HTTP errors, retry, etc
+
 	-- Permanent error
 	--
 	if r == false then
@@ -291,12 +301,14 @@ function Actor:run(input)
 	if retrun.stop_reason == "max_tokens" then
 	end
 
-	-- If tool_request_list is not nil then we need to run the tool requests,
-	-- populate a user request with the tool responses, and then send it over.
+	-- If tool_request_list is not nil then we need to run the tool
+	-- requests, populate a user request with the tool responses,
+	-- and then send it over.
 	-- 
 	while (#tool_request_list > 0) do
 		local tl = {}
-		self.log_file:dlog("tools", "tool count: " .. #tool_request_list)
+		self.log_file:dlog("tools",
+		    "tool count: " .. #tool_request_list)
 		for _, v in ipairs(tool_request_list) do
 			self.log_file:dlog("tools", "tool name: " .. v.name)
 			local tool <close> = self.tool_list:lookup_and_create(v.name)
@@ -330,6 +342,8 @@ function Actor:run(input)
 		tool_request_list = {}
 
 		local r, retrun = self:run_input(tl, tool_request_list)
+
+		-- TODO: handle HTTP errors, retry, etc
 
 		-- Perm failure? break
 		if r == false then
