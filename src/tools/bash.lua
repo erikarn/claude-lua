@@ -187,12 +187,12 @@ end
 -- Explicit close for "local var <close> = bash.create()"
 --
 function BashSession:__close()
-	print("Called, closing!\n")
+	print("BashSession:__close(): closing!\n")
 	self:_kill()
 end
 
 function BashSession:__gc()
-	print("Called, gc'ing!\n")
+	print("BashSession:__gc(): gc'ing!\n")
 	self:_kill()
 end
 
@@ -232,15 +232,15 @@ end
 -- Return a string indicating what we're doing
 
 function BashSession:get_ui_label(req)
-	if not req.input.command then
-		return {
-			content = "(missing input, error)"
-		}
-	end
-
 	if req.input.restart then
 		return {
 			content = "(restart shell)"
+		}
+	end
+
+	if not req.input.command then
+		return {
+			content = "(missing input, error)"
 		}
 	end
 
