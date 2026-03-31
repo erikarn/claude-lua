@@ -23,6 +23,7 @@ local lfs = require('lfs')
 local clog = require('clog')
 local json = require('dkjson')
 local tools = require('tools')
+local config = require('config')
 
 -- Class table
 --
@@ -30,33 +31,28 @@ local Actor = {
 }
 Actor.__index = Actor
 
--- Defaults
---
-local DEFAULTS = {
-	request_timeout = 60,
-	output_tokens = 1024,
-	sandbox_path = "/home/adrian/sandbox",
-	max_output_chars = 100000,
-}
-
 -- Constructor
 --
 
-function Actor:create(opts)
+function Actor:new(opts)
 	local m = {}
 	setmetatable(m, Actor)
-	m.session_history = {}
-	m.config = {}
-	for k, v in pairs(DEFAULTS) do m.config[k] = v end
+	m.local_config = {}
+	m.config = config:new()
+
+	-- TODO: migrate DEFAULTS to just use the Config object
+
 	if opts then
-		for k, v in pairs(opts) do m.config[k] = v end
+		for k, v in pairs(opts) do m.local_config[k] = v end
 	end
 
-	-- log_file
-	-- tool_list
-	-- API_KEY
-	-- actor_uuid
-	--
+	-- This will override the configured key
+	m.session_history = {}
+	m.api_key = nil
+	m.actor_uuid = ""
+	m.system_prompt = ""
+	m.log_file = nil
+	m.tool_list = nil
 
 	-- TODO: there's likely a lot more interesting API state
 	-- the claude API can implement; I'll need to tinker with
@@ -66,12 +62,28 @@ function Actor:create(opts)
 end
 
 -- Explicitly set the anthropic API key
+--
+function Actor:set_api_key(key)
+	self.api_key = key
+end
+
+function Actor:get_api_key()
+	if self.api_key ~= nil then
+		return self.api_key
+	end
+
+	return self.config.config.keys.anthropic_api
+end
 
 -- Explicitly set the tool list
 --
 -- For now this is the full list of tools.  The tool list is provided
 -- on each call to the API, so we do have the ability to customise the
 -- tool list based on what the current ask is.
+--
+function Actor:set_tool_list(tool_list)
+	self.tool_list = tool_list
+end
 
 -- Explicitly set the actor uuid
 --
@@ -79,11 +91,28 @@ end
 -- actor state so it can be restartable between object instances
 -- (eg if it's run in separate processes.)
 
+function Actor:set_actor_uuid(uuid)
+	self.actor_uuid = uuid
+end
+
 -- Explicitly set the initial system prompt.
 --
 -- This is passed into the Anthropic API as the system field, rather
 -- than initial context passed in as the message list.
 --
+
+function Actor:set_system_prompt(prompt)
+	self.system_prompt = system_prompt
+end
+
+-- Set the clog log_file object
+--
+-- I haven't yet decided whether this should be a singleton that's shared
+-- everywhere; will tinker with the logging stuff once this class is used.
+--
+function Actor:set_log(log_file)
+	self.log_file = log_file
+end
 
 -- Explicitly set the initial context.
 --
@@ -92,6 +121,10 @@ end
 -- itself.
 --
 
+-- Run an input line from the user/controller.
+--
+-- Returns {true|false}, { stop_reason = stop_reason }
+--
 
 -- old code from main.lua that needs to be cleaned up / rethought
 -- as part of this mess.
@@ -102,7 +135,7 @@ end
 --
 -- Returns {true|false}, { stop_reason = stop_reason }
 --
-local function run_input(input_content, tool_request_list)
+function Actor:run_input(input_content, tool_request_list)
 	-- Assemble the messages with the history
 	local messages = {}
 
@@ -111,8 +144,9 @@ local function run_input(input_content, tool_request_list)
 	-- from the user such as tool_result, text, image, etc.
 	-- I'll tackle that later.
 	--
-	for i, e in ipairs(session_history) do
-		log_file:dprint("history", "i: " .. tostring(i) .. " e: " .. require("dkjson").encode(e))
+	for i, e in ipairs(self.session_history) do
+		self.log_file:dprint("history",
+		    "i: " .. tostring(i) .. " e: " .. json.encode(e))
 		table.insert(messages, e)
 	end
 
@@ -121,21 +155,21 @@ local function run_input(input_content, tool_request_list)
 	-- XXX TODO: this is very spammy; we likely should persist this somewhere
 	-- separate to be able to restart things.
 	--
-	-- log_file:dlog("conversation", json.encode(messages))
+	-- self.log_file:dlog("conversation", json.encode(messages))
 
 	local an_req = anthropic.create()
-	an_req:set_api_key(API_KEY)
-	an_req:set_log(log_file)
+	an_req:set_api_key(self.api_key)
+	an_req:set_log(self.log_file)
 ::retry::
 	local stream, err_state = an_req:stream_messages(messages,
-	    tool_list:get_tool_schema_list(), nil)
+	    self.tool_list:get_tool_schema_list(), nil)
 	if (stream == nil) then
 		local es = json.decode(err_state.content)
 		-- API error
 		-- XXX TODO: log!
 		-- XXX TODO: return some action!
 		--
-		log_file:dlog("conversation", err_state.content)
+		self.log_file:dlog("conversation", err_state.content)
 		print("[ERROR] code=" .. tostring(err_state.code))
 		print("[ERROR] payload=" .. err_state.content)
 		print("[ERROR] type='" .. es.type .. "'")
@@ -154,7 +188,7 @@ local function run_input(input_content, tool_request_list)
 
 	local state = an_req:get_init_state()
 
-	table.insert(session_history, { role = "user", content = input_content })
+	table.insert(self.session_history, { role = "user", content = input_content })
 
 	-- I'm assuming here the response is completely read in a call
 	-- to run_input().  If this isn't the case then we'll need an
@@ -166,7 +200,7 @@ local function run_input(input_content, tool_request_list)
 		for single_line in (line .. "\n"):gmatch("([^\n]*)\n") do
 			if single_line == "\n" then goto next_single_line end
 			if single_line == "" then goto next_single_line end
-			log_file:dprint("input_line", single_line)
+			self.log_file:dprint("input_line", single_line)
 			an_req:parse_sse_line(single_line, state)
 
 			-- State now contains whatever partial or full
@@ -183,7 +217,7 @@ local function run_input(input_content, tool_request_list)
 			-- Fire off the tool request to populate in the output stream.
 			--
 			if state.done == true and state.needs_tool == true then
-				log_file:dlog("tools", "tool request: " .. json.encode(state.pending_tool))
+				self.log_file:dlog("tools", "tool request: " .. json.encode(state.pending_tool))
 				-- do a full copy
 				local tool_req = {
 					id = state.pending_tool.id,
@@ -224,121 +258,91 @@ local function run_input(input_content, tool_request_list)
 		    { type = "tool_use", id = v.id, name = v.name, input = v.input })
 	end
 
-	table.insert(session_history, { role = "assistant", content = content_list })
+	table.insert(self.session_history, { role = "assistant", content = content_list })
 
-	log_file:write_json({ block = "response", content = response })
-	log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
+	self.log_file:write_json({ block = "response", content = response })
+	self.log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
 	print(string.format("[tokens] %d input tokens, %d output tokens\n", state.input_tokens, state.output_tokens))
 
 	return true, { stop_reason = state.stop_reason }
 end
 
-local function set_rng_fn()
-	local bytes = {}
-	for i = 1, 16 do
-		bytes[i] = string.char(math.random(0,255))
+function Actor:run(input)
+
+	local tool_request_list = { }
+
+	self.log_file:write_json({ block = "input", input_str = input })
+--	-- TODO: log intermediary steps
+	local r, retrun = self:run_input({ { type = "text", text = input } },
+	    tool_request_list)
+
+	-- Permanent error
+	--
+	if r == false then
+		return r, retrun
 	end
-	return table.concat(bytes)
-end
 
-local function run()
+	-- TODO: if we get max_tokens then we'll need to append
+	-- a user line like "please continue", bump up the token limit and
+	-- resubmit for more work.
+	--
+	-- This can be easily hit by using the 1024 token default
+	--
+	if retrun.stop_reason == "max_tokens" then
+	end
 
-	uuid.set_rng(set_rng_fn)
-	local session_uuid = uuid()
-	print("Session: " .. session_uuid)
+	-- If tool_request_list is not nil then we need to run the tool requests,
+	-- populate a user request with the tool responses, and then send it over.
+	-- 
+	while (#tool_request_list > 0) do
+		local tl = {}
+		self.log_file:dlog("tools", "tool count: " .. #tool_request_list)
+		for _, v in ipairs(tool_request_list) do
+			self.log_file:dlog("tools", "tool name: " .. v.name)
+			local tool <close> = self.tool_list:lookup_and_create(v.name)
+			if tool == nil then
+				-- TODO: maybe make this an error print/log?
+				self.log_file:dlog("tools", "tool lookup failed")
+				table.insert(tl, {
+					type = "tool_result",
+					tool_use_id = v.id,
+					is_error = true,
+					content = "The requested tool doesn't exist!",
+				});
+			else
+--				print("created tool")
+				self.log_file:dlog("tools", "tool request: " .. json.encode(v))
+				print("[TOOL] [" .. v.name .. "] " .. tool:get_ui_label(v).content .. "\n")
+				local tr = tool:run(v)
+				-- populate common info
+				tr.type = "tool_result"
+				tr.tool_use_id = v.id
+--				print("tool result:" .. tr.content)
 
-	-- Sigh, global since this isn't a class and we need it in other functions
-	log_file = open_log_file(session_uuid)
---	log_file:debug_section("tools", true)
+				-- log
+				self.log_file:dlog("tools", "tool response: " .. json.encode(tr))
 
-	-- XXX TODO: write a real timestamp
-	log_file:write_json( { start_timestamp = 1234 } );
-
-	while true do
-		local input = readline.readline("> ")
-		if input == nil then break end
-		input = input:match("^%s*(.-)%s*$")
-		if #input > 0 then
-			local tool_request_list = { }
-
-			readline.addhistory(input)
-			log_file:write_json({ block = "input", input_str = input })
---			readline.historysave(os.getenv("HOME") .. "/.claude_history")
---			-- TODO: log intermediary steps
-			local r, retrun = run_input({ { type = "text", text = input } }, tool_request_list)
-
-			-- Permanent error
-			--
-			if r == false then
-				break
+				-- insert into the request/response flow
+				table.insert(tl, tr)
 			end
-
-			-- TODO: if we get max_tokens then we'll need to append
-			-- a user line like "please continue", bump up the token limit and
-			-- resubmit for more work.
-			--
-			-- This can be easily hit by using the 1024 token default
-			--
-			if retrun.stop_reason == "max_tokens" then
-			end
-
-			-- If tool_request_list is not nil then we need to run the tool requests,
-			-- populate a user request with the tool responses, and then send it over.
-			-- 
-			while (#tool_request_list > 0) do
-				local tl = {}
-				log_file:dlog("tools", "tool count: " .. #tool_request_list)
-				for _, v in ipairs(tool_request_list) do
-					log_file:dlog("tools", "tool name: " .. v.name)
-					local tool <close> = tool_list:lookup_and_create(v.name)
-					if tool == nil then
-						-- TODO: maybe make this an error print/log?
-						log_file:dlog("tools", "tool lookup failed")
-						table.insert(tl, {
-							type = "tool_result",
-							tool_use_id = v.id,
-							is_error = true,
-							content = "The requested tool doesn't exist!",
-						});
-					else
---						print("created tool")
-						log_file:dlog("tools", "tool request: " .. json.encode(v))
-						print("[TOOL] [" .. v.name .. "] " .. tool:get_ui_label(v).content .. "\n")
-						local tr = tool:run(v)
-						-- populate common info
-						tr.type = "tool_result"
-						tr.tool_use_id = v.id
---						print("tool result:" .. tr.content)
-
-						-- log
-						log_file:dlog("tools", "tool response: " .. json.encode(tr))
-
-						-- insert into the request/response flow
-						table.insert(tl, tr)
-					end
-				end
-
-				tool_request_list = {}
-
-				local r, retrun = run_input(tl, tool_request_list)
-
-				-- Perm failure? break
-				if r == false then
-					break
-				end
-
-				-- TODO max tokens again, see above, sigh
-				--
-				if retrun.stop_reason == "max_tokens" then
-				end
-			end
-
 		end
-		log_file:flush()
-		print("====\n")
+
+		tool_request_list = {}
+
+		local r, retrun = self:run_input(tl, tool_request_list)
+
+		-- Perm failure? break
+		if r == false then
+			return false, retrun
+		end
+
+		-- TODO max tokens again, see above, sigh
+		--
+		if retrun.stop_reason == "max_tokens" then
+		end
 	end
 
-	log_file:close()
+	return true, nil
 
 end
 
