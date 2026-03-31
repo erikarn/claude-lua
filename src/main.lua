@@ -8,42 +8,21 @@ local clog = require('clog')
 local json = require('dkjson')
 local tools = require('tools')
 local config = require('config')
+local actor = require('actor')
 
-local session_history = {}
-
-local log_file = nil
-
-local tool_list = tools.create()
-
+-- Load configuration info early
+--
 Config = config:new()
 Config:load(os.getenv("HOME") .. "/.claude_cli/conf.json")
 
--- TODO: we're statically using this for now,
--- soon we'll want to register tools and then have a way to
--- populate the tool requests and handle responses
--- and route them correctly.
+-- Create tool list early
 --
+local tool_list = tools.create()
 
 -- XXX god damnit I should have the tool announce its name too
 tool_list:register("get_weather", require('tools/weather'))
 tool_list:register("str_replace_based_edit_tool", require('tools/text_editor'))
 tool_list:register("bash", require('tools/bash'))
-
--- readline.historyload(os.getenv("HOME") .. "/.claude_history")
--- readline.historysetmaxlen(1000)
-
--- local messages = {
---     { role = "user", content = "Explain the FreeBSD jail system in one paragraph." }
--- }
--- 
--- local response, err = anthropic.messages(messages)
--- 
--- if not response then
---     io.stderr:write("Error: " .. tostring(err) .. "\n")
---     os.exit(1)
--- end
--- print(anthropic.get_text(response))
---
 
 local function open_log_file(session_uuid)
 	local bn = os.getenv("HOME") .. "/.claude_cli"
@@ -61,143 +40,6 @@ local function open_log_file(session_uuid)
 	return c
 end
 
---
--- Run the input, return a list of tools that need to be run and fed
--- back into the API.
---
--- Returns {true|false}, { stop_reason = stop_reason }
---
-local function run_input(input_content, tool_request_list)
-	-- Assemble the messages with the history
-	local messages = {}
-
-	-- This for now hard-codes the content as being text.
-	-- I think the API lets me provide other content sources
-	-- from the user such as tool_result, text, image, etc.
-	-- I'll tackle that later.
-	--
-	for i, e in ipairs(session_history) do
-		log_file:dprint("history", "i: " .. tostring(i) .. " e: " .. require("dkjson").encode(e))
-		table.insert(messages, e)
-	end
-
-	table.insert(messages, { role = "user", content = input_content})
-
-	-- XXX TODO: this is very spammy; we likely should persist this somewhere
-	-- separate to be able to restart things.
-	--
-	-- log_file:dlog("conversation", json.encode(messages))
-
-	local an_req = anthropic.create()
-	an_req:set_api_key(Config.config.keys.anthropic_api)
-	an_req:set_log(log_file)
-::retry::
-	local stream, err_state = an_req:stream_messages(messages,
-	    tool_list:get_tool_schema_list(), nil)
-	if (stream == nil) then
-		local es = json.decode(err_state.content)
-		-- API error
-		-- XXX TODO: log!
-		-- XXX TODO: return some action!
-		--
-		log_file:dlog("conversation", err_state.content)
-		print("[ERROR] code=" .. tostring(err_state.code))
-		print("[ERROR] payload=" .. err_state.content)
-		print("[ERROR] type='" .. es.type .. "'")
---		print("[ERROR] error.type=" .. es.error.type)
-		if (err_state.code == 429 and es.type == "error"
-		    and es.error.type == "rate_limit_error") then
-			-- sigh, lua
-			print("[ERROR] Sleeping for 30 seconds and retrying..")
-			os.execute('sleep 30')
-			goto retry
-		end
-		-- TODO: return a better error state for it to handle
-		-- TODO: once I return stuff, the caller can sleep/retry, not here
-		return false, nil
-	end
-
-	local state = an_req:get_init_state()
-
-	table.insert(session_history, { role = "user", content = input_content })
-
-	-- I'm assuming here the response is completely read in a call
-	-- to run_input().  If this isn't the case then we'll need an
-	-- alternate way to track the session history here.
-	--
-	local response = ""
-
-	for line in stream:each_chunk() do
-		for single_line in (line .. "\n"):gmatch("([^\n]*)\n") do
-			if single_line == "\n" then goto next_single_line end
-			if single_line == "" then goto next_single_line end
-			log_file:dprint("input_line", single_line)
-			an_req:parse_sse_line(single_line, state)
-
-			-- State now contains whatever partial or full
-			-- output needs to be handled, either by being
-			-- output/logged, or to call a tool.
-			if state.response_set == true then
-				response = response .. state.response_text
-				io.write(state.response_text)
-				state.response_text = nil
-				state.response_set = false
-			end
-
-			--
-			-- Fire off the tool request to populate in the output stream.
-			--
-			if state.done == true and state.needs_tool == true then
-				log_file:dlog("tools", "tool request: " .. json.encode(state.pending_tool))
-				-- do a full copy
-				local tool_req = {
-					id = state.pending_tool.id,
-					name = state.pending_tool.name,
-					input = state.pending_tool.input,
-				}
-				table.insert(tool_request_list, tool_req)
-			end
-
-			--
-			-- If we get state.done, at least log why to the console
-			-- so I can see what's going on here.  There's going to be a bunch
-			-- of things I need to handle and turn around, like pause_turn,
-			-- max_tokens, model_context_window_exceeded, etc.
-			--
-			if state.done == true then
-				-- TODO: this really needs to be communicated back better
-				print("\n[STATE] done, stop_reason: " .. state.stop_reason .. "\n")
-			end
-			if state.done then break end
-::next_single_line::
-		end
-		if state.done then break end
-	end
-	print("\n")
-
-	-- This gets messy, because if a tool (or more than one tool is requested)
-	-- then the conversation history needs to include it all.
-	--
-	local content_list = {}
-	if (response ~= nil and response ~= "") then
-		table.insert(content_list, { type = "text", text = response })
-	end
-
-	-- And now insert the tool invocation history
-	for _, v in ipairs(tool_request_list) do
-		table.insert(content_list,
-		    { type = "tool_use", id = v.id, name = v.name, input = v.input })
-	end
-
-	table.insert(session_history, { role = "assistant", content = content_list })
-
-	log_file:write_json({ block = "response", content = response })
-	log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
-	print(string.format("[tokens] %d input tokens, %d output tokens\n", state.input_tokens, state.output_tokens))
-
-	return true, { stop_reason = state.stop_reason }
-end
-
 local function set_rng_fn()
 	local bytes = {}
 	for i = 1, 16 do
@@ -208,16 +50,40 @@ end
 
 local function run()
 
+	-- Create a new actor; will configure the various parameters afterwards
+	--
+	local a = actor.new()
+
+	-- Initialise the session information with a random uuid; later on I'll
+	-- establish a way to continue a global session / actor session.
+	--
 	uuid.set_rng(set_rng_fn)
 	local session_uuid = uuid()
 	print("Session: " .. session_uuid)
 
-	-- Sigh, global since this isn't a class and we need it in other functions
+	-- For now actor uuid == session uuid; remember at some point I
+	-- want to be able to have multiple actors (dynamic, static) be
+	-- available per session and have them the session / actors
+	-- restartable.
+	--
+	a:set_actor_uuid(session_uuid)
+
+	-- Set the global tool list
+	a:set_tool_list(tool_list)
+
+	a:set_api_key(Config.config.keys.anthropic_api)
+
+	-- Sigh, global since this isn't a class and we need it in other
+	-- functions
+	--
 	log_file = open_log_file(session_uuid)
 --	log_file:debug_section("tools", true)
 
 	-- XXX TODO: write a real timestamp
 	log_file:write_json( { start_timestamp = 1234 } );
+
+	-- Set the log object
+	a:set_log(log_file)
 
 	while true do
 		local input = readline.readline("> ")
@@ -225,86 +91,23 @@ local function run()
 		input = input:match("^%s*(.-)%s*$")
 		if #input > 0 then
 			local tool_request_list = { }
+			-- TODO: we should have callbacks for the
+			-- output data, right? rather than having it
+			-- print?
+			local ret, err = a:run(input)
 
-			readline.addhistory(input)
-			log_file:write_json({ block = "input", input_str = input })
---			readline.historysave(os.getenv("HOME") .. "/.claude_history")
---			-- TODO: log intermediary steps
-			local r, retrun = run_input({ { type = "text", text = input } }, tool_request_list)
-
-			-- Permanent error
+			-- Temporary way to break out when the actor
+			-- says so
 			--
-			if r == false then
+			if ret == false then
 				break
 			end
-
-			-- TODO: if we get max_tokens then we'll need to append
-			-- a user line like "please continue", bump up the token limit and
-			-- resubmit for more work.
-			--
-			-- This can be easily hit by using the 1024 token default
-			--
-			if retrun.stop_reason == "max_tokens" then
-			end
-
-			-- If tool_request_list is not nil then we need to run the tool requests,
-			-- populate a user request with the tool responses, and then send it over.
-			-- 
-			while (#tool_request_list > 0) do
-				local tl = {}
-				log_file:dlog("tools", "tool count: " .. #tool_request_list)
-				for _, v in ipairs(tool_request_list) do
-					log_file:dlog("tools", "tool name: " .. v.name)
-					local tool <close> = tool_list:lookup_and_create(v.name)
-					if tool == nil then
-						-- TODO: maybe make this an error print/log?
-						log_file:dlog("tools", "tool lookup failed")
-						table.insert(tl, {
-							type = "tool_result",
-							tool_use_id = v.id,
-							is_error = true,
-							content = "The requested tool doesn't exist!",
-						});
-					else
---						print("created tool")
-						log_file:dlog("tools", "tool request: " .. json.encode(v))
-						print("[TOOL] [" .. v.name .. "] " .. tool:get_ui_label(v).content .. "\n")
-						local tr = tool:run(v)
-						-- populate common info
-						tr.type = "tool_result"
-						tr.tool_use_id = v.id
---						print("tool result:" .. tr.content)
-
-						-- log
-						log_file:dlog("tools", "tool response: " .. json.encode(tr))
-
-						-- insert into the request/response flow
-						table.insert(tl, tr)
-					end
-				end
-
-				tool_request_list = {}
-
-				local r, retrun = run_input(tl, tool_request_list)
-
-				-- Perm failure? break
-				if r == false then
-					break
-				end
-
-				-- TODO max tokens again, see above, sigh
-				--
-				if retrun.stop_reason == "max_tokens" then
-				end
-			end
-
 		end
 		log_file:flush()
 		print("====\n")
 	end
 
 	log_file:close()
-
 end
 
 run()
