@@ -53,6 +53,7 @@ function Actor:new(opts)
 	m.system_prompt = ""
 	m.log_file = nil
 	m.tool_list = nil
+	m.response_callback = nil
 
 	-- TODO: there's likely a lot more interesting API state
 	-- the claude API can implement; I'll need to tinker with
@@ -121,10 +122,39 @@ end
 -- itself.
 --
 
--- Run an input line from the user/controller.
+-- Set the callback for receving payloads / responses from the run()
+-- routine.
 --
--- Returns {true|false}, { stop_reason = stop_reason }
+-- The run / run_input routines don't print anything; instead they return
+-- tables with the response type / status.  The function itself will terminate
+-- once it's finished its processing loop and/or requires some external
+-- action.
 --
+-- Supported return values include:
+--
+-- { type = text, content = "text response" }
+-- { type = tool_ui, name = <tool name>, content = "tool ui line" }
+-- { type = state_done, stop_reason = "stop reason" }
+-- { type = api_error, err_state = { code = <http code>, type = <error type> } }
+-- { type = tokens, input_tokens = <input token count>, output_tokens = <output token count> }
+--
+-- If the function requires local state (eg it's an object) then please
+-- pass in an anonymous function to wrap the self reference.
+--
+-- To clear the callback, call this with 'nil' as the function.
+--
+function Actor:set_callback(func)
+	self.response_callback = func
+end
+
+--
+-- Hand the output to the callback if it exists.
+--
+function Actor:output(out)
+	if self.response_callback ~= nil then
+		self.response_callback(out)
+	end
+end
 
 -- old code from main.lua that needs to be cleaned up / rethought
 -- as part of this mess.
@@ -180,13 +210,14 @@ function Actor:run_input(input_content, tool_request_list)
 		--
 --		return false, { stop_reason = "api", err_state = es }
 
-		print("[ERROR] code=" .. tostring(err_state.code))
-		print("[ERROR] payload=" .. err_state.content)
-		print("[ERROR] type='" .. es.type .. "'")
-		print("[ERROR] error.type=" .. es.error.type)
+		-- This is for UI output, not for handling the actual error
+		--
+		self:output({ type = "api_error", err_state = es})
+
 		if (err_state.code == 429 and es.type == "error"
 		    and es.error.type == "rate_limit_error") then
 			-- sigh, lua
+			-- TODO: really need to migrate this to the caller
 			print("[ERROR] Sleeping for 30 seconds and retrying..")
 			os.execute('sleep 30')
 			goto retry
@@ -216,7 +247,8 @@ function Actor:run_input(input_content, tool_request_list)
 			-- output/logged, or to call a tool.
 			if state.response_set == true then
 				response = response .. state.response_text
-				io.write(state.response_text)
+				self:output({ type = "text",
+				    content = state.response_text })
 				state.response_text = nil
 				state.response_set = false
 			end
@@ -243,14 +275,14 @@ function Actor:run_input(input_content, tool_request_list)
 			--
 			if state.done == true then
 				-- TODO: this really needs to be communicated back better
-				print("\n[STATE] done, stop_reason: " .. state.stop_reason .. "\n")
+				self:output({ type = "state_done",
+				    stop_reason = state.stop_reason })
 			end
 			if state.done then break end
 ::next_single_line::
 		end
 		if state.done then break end
 	end
-	print("\n")
 
 	-- This gets messy, because if a tool (or more than one tool is requested)
 	-- then the conversation history needs to include it all.
@@ -270,7 +302,10 @@ function Actor:run_input(input_content, tool_request_list)
 
 	self.log_file:write_json({ block = "response", content = response })
 	self.log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
-	print(string.format("[tokens] %d input tokens, %d output tokens\n", state.input_tokens, state.output_tokens))
+
+	self:output({ type = "tokens",
+	    input_tokens = state.input_tokens,
+	    output_tokens = state.output_tokens })
 
 	return true, { stop_reason = state.stop_reason }
 end
@@ -324,7 +359,8 @@ function Actor:run(input)
 			else
 --				print("created tool")
 				self.log_file:dlog("tools", "tool request: " .. json.encode(v))
-				print("[TOOL] [" .. v.name .. "] " .. tool:get_ui_label(v).content .. "\n")
+				self:output({ type = "tool_ui", name = v.name,
+				    content = tool:get_ui_label(v).content })
 				local tr = tool:run(v)
 				-- populate common info
 				tr.type = "tool_result"

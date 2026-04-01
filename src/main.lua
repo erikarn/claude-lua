@@ -48,6 +48,19 @@ local function set_rng_fn()
 	return table.concat(bytes)
 end
 
+local function local_output(out)
+	if (out.type == "text") then
+		io.write(out.content)
+	elseif (out.type == "tool_ui") then
+		-- Yes, it'd be nice if we could handle this as an overlay and
+		-- not trash partially written output.
+		print("\n[TOOL] " .. out.content)
+	else
+		print(string.format("[unknown type = '%s']: %s\n",
+		    out.type, json.encode(out)))
+	end
+end
+
 local function run()
 
 	-- Create a new actor; will configure the various parameters afterwards
@@ -72,6 +85,9 @@ local function run()
 	a:set_tool_list(tool_list)
 
 	a:set_api_key(Config.config.keys.anthropic_api)
+
+	-- Set an output callback to capture the output for printing
+	a:set_callback(local_output)
 
 	-- Sigh, global since this isn't a class and we need it in other
 	-- functions
