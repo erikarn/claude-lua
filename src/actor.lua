@@ -310,6 +310,35 @@ function Actor:run_input(input_content, tool_request_list)
 	return true, { stop_reason = state.stop_reason }
 end
 
+
+--
+-- API entry point to run the API/model over the given input.
+--
+-- The actor maintains conversion state, tooling config and other
+-- history.  This call will take all of that, add the provided input
+-- string, and send it to the API.  It will then iterate over
+-- the API return results, handle tooling calls and such until it
+-- reaches a point where it can't make forward progress on its own
+-- and will return error/status to the caller.
+--
+-- TODO: the eventual goal is that the returned error/status doesn't
+-- require API data to make decisions.  Eg if it's a temporary API
+-- rate limit error, return that as an explicit error type, rather
+-- than relying upon anthropics returned HTTP status code / return
+-- error.  Similar for max tokens - don't return the max_tokens
+-- return result from Anthropic, we need to return our own defined
+-- error/status.
+--
+-- Return values are:
+--
+-- (success <true|false>), (status table)
+--
+-- 'success' defines whether the API call succeeded or not.
+-- TODO: success and failure need defining here, especially
+-- around whether user input needs to be provided, whether the
+-- actor can be retried/restarted or some other error handling
+-- is required, etc, etc.
+--
 function Actor:run(input)
 
 	local tool_request_list = { }
@@ -319,9 +348,7 @@ function Actor:run(input)
 	local r, retrun = self:run_input({ { type = "text", text = input } },
 	    tool_request_list)
 
-	-- TODO: handle HTTP errors, retry, etc
-
-	-- Permanent error
+	-- Permanent error; kick to actor owner to handle
 	--
 	if r == false then
 		return r, retrun
@@ -381,7 +408,7 @@ function Actor:run(input)
 
 		-- TODO: handle HTTP errors, retry, etc
 
-		-- Perm failure? break
+		-- Permanent error; kick to actor owner to handle
 		if r == false then
 			return false, retrun
 		end
