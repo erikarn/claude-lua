@@ -112,10 +112,13 @@ local function run()
 			-- print?
 			local ret, err = a:run(input)
 
-			-- Temporary way to break out when the actor
-			-- says so
+			-- We hit a stop reason that requires handling
+			-- versus just end of input.
+			-- TODO: figure out what to do for each of them
+			-- here!
 			--
 			if ret == false then
+				print("*** stop reason: " .. json.encode(err))
 				break
 			end
 		end

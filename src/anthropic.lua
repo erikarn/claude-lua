@@ -105,14 +105,14 @@ function Anthropic:stream_messages(messages, tools, opts)
     local headers, stream, errno = req:go(opts.timeout)
     if not headers then
 	-- TODO: error logging API
-        print("request failed: " .. tostring(stream) .. "errno: " .. errno)
-	local errstate = { code = 0, content = "Request timeout" }
+	local errstate = { code = 0, type = "request_timeout",
+	    content = json.encode({ type = "text", content = "Request timeout" })}
 	return nil, errstate
     end
 
     local status = tonumber(headers:get(":status"))
     if status ~= 200 then
-	local errstate = { code = status, content = stream:get_body_as_string() }
+	local errstate = { code = status, type = "api_error", content = stream:get_body_as_string() }
 	return nil, errstate
     end
 

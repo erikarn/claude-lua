@@ -165,6 +165,27 @@ end
 --
 -- Returns {true|false}, { stop_reason = stop_reason }
 --
+-- Defined stop_reason fields for errors - ideally processing logic only
+-- needs to handle the known set of stop_reason values.
+--
+-- api_error - an API error; err_state contains response_code
+--    (HTTP reponse code); err_type contains the error type from
+--    the API code, and err_state includes any error state information
+--    from the API call results itself.
+--
+-- api_rate_limit - the API call returned a 429 status error / rate limit;
+--    the caller is responsible for retrying the API call with the same
+--    payload after a delay.
+--
+-- max_tokens - the API call hit a token limit.  The request should be
+--    continued either by retrying with a higher token limit and stripping
+--    the last response, or by submitting the last response with a new
+--    prompt such as "Please continue" to, well, encourage the model to
+--    continue.
+--
+-- TODO: very specifically define the other outputs that can be returned here
+-- and what the processing rules should be.
+--
 function Actor:run_input(input_content, tool_request_list)
 	-- Assemble the messages with the history
 	local messages = {}
@@ -190,25 +211,20 @@ function Actor:run_input(input_content, tool_request_list)
 	local an_req = anthropic.create()
 	an_req:set_api_key(self.api_key)
 	an_req:set_log(self.log_file)
-::retry::
 	local stream, err_state = an_req:stream_messages(messages,
 	    self.tool_list:get_tool_schema_list(), nil)
 	if (stream == nil) then
-		local es = json.decode(err_state.content)
+		local es = {}
+		if (err_state.content ~= nil) then
+			es = json.decode(err_state.content)
+		end
 		-- Squirrel the HTTP reponse code in here too
 		es.response_code = err_state.code
+		es.err_type = err_state.type
 
 		-- API error
-		-- XXX TODO: log!
-		-- XXX TODO: return some action!
 		--
 		self.log_file:dlog("conversation", err_state.content)
-
-		-- Don't uncomment this until the callers of this routine
-		-- handle the HTTP API errors in a suitable way (eg by moving
-		-- the retry into the caller, not here).
-		--
---		return false, { stop_reason = "api", err_state = es }
 
 		-- This is for UI output, not for handling the actual error
 		--
@@ -216,13 +232,11 @@ function Actor:run_input(input_content, tool_request_list)
 
 		if (err_state.code == 429 and es.type == "error"
 		    and es.error.type == "rate_limit_error") then
-			-- sigh, lua
-			-- TODO: really need to migrate this to the caller
-			print("[ERROR] Sleeping for 30 seconds and retrying..")
-			os.execute('sleep 30')
-			goto retry
+			return false, { stop_reason = "api_rate_limit",
+			    err_state = es }
 		end
-		return false, { stop_reason = "api", err_state = es }
+
+		return false, { stop_reason = "api_error", err_state = es }
 	end
 
 	local state = an_req:get_init_state()
@@ -334,6 +348,7 @@ end
 -- (success <true|false>), (status table)
 --
 -- 'success' defines whether the API call succeeded or not.
+--
 -- TODO: success and failure need defining here, especially
 -- around whether user input needs to be provided, whether the
 -- actor can be retried/restarted or some other error handling
@@ -348,7 +363,7 @@ function Actor:run(input)
 	local r, retrun = self:run_input({ { type = "text", text = input } },
 	    tool_request_list)
 
-	-- Permanent error; kick to actor owner to handle
+	-- Error; kick to actor owner to handle
 	--
 	if r == false then
 		return r, retrun
@@ -361,6 +376,7 @@ function Actor:run(input)
 	-- This can be easily hit by using the 1024 token default
 	--
 	if retrun.stop_reason == "max_tokens" then
+		return false, retrun
 	end
 
 	-- If tool_request_list is not nil then we need to run the tool
@@ -406,8 +422,6 @@ function Actor:run(input)
 
 		local r, retrun = self:run_input(tl, tool_request_list)
 
-		-- TODO: handle HTTP errors, retry, etc
-
 		-- Permanent error; kick to actor owner to handle
 		if r == false then
 			return false, retrun
@@ -416,6 +430,7 @@ function Actor:run(input)
 		-- TODO max tokens again, see above, sigh
 		--
 		if retrun.stop_reason == "max_tokens" then
+			return false, retrun
 		end
 	end
 
