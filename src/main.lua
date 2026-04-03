@@ -114,7 +114,7 @@ local function run()
 		if input == nil then break end
 		input = input:match("^%s*(.-)%s*$")
 		if #input > 0 then
-			local tool_request_list = { }
+::try_again::
 			-- TODO: we should have callbacks for the
 			-- output data, right? rather than having it
 			-- print?
@@ -126,6 +126,29 @@ local function run()
 			-- here!
 			--
 			if ret == false then
+				-- max token handling
+				if err.stop_reason == "max_tokens" then
+					-- For now just bump token limit and
+					-- submit a new request. I think the
+					-- next thing to do here is to allow
+					-- passing in some opts in each call to
+					-- run() so I can control this stuff per
+					-- invocation.
+					--
+					print("[TOKENS] hit max tokens; bumping to 64k for now\n")
+					a:set_max_tokens(64000)
+					input = "Please continue."
+					goto try_again
+				end
+
+				-- TODO: API timeout handling
+
+				-- TODO: API rate limit handling
+
+				-- TODO: API specifically hitting iteration
+				-- limit and wanting a continuation (similar
+				-- to hitting "max_tokens" above.)
+
 				print("*** stop reason: " .. json.encode(err))
 				break
 			end
