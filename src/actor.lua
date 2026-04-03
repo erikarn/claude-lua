@@ -208,12 +208,7 @@ function Actor:run_input(input_content, tool_request_list)
 		table.insert(messages, e)
 	end
 
-	-- Handle /no/ input content being provided - useful for things such
-	-- as retrying input
-	--
-	if (input_content ~= nil) then
-		table.insert(messages, { role = "user", content = input_content})
-	end
+	table.insert(messages, { role = "user", content = input_content})
 
 	-- XXX TODO: this is very spammy; we likely should persist this somewhere
 	-- separate to be able to restart things.
@@ -259,13 +254,8 @@ function Actor:run_input(input_content, tool_request_list)
 
 	local state = an_req:get_init_state()
 
-	-- Again, handle being called to retry the current conversation
-	-- state and message
-	--
-	if (input_content ~= nil) then
-		table.insert(self.session_history,
-		    { role = "user", content = input_content })
-	end
+	table.insert(self.session_history,
+	    { role = "user", content = input_content })
 
 	-- I'm assuming here the response is completely read in a call
 	-- to run_input().  If this isn't the case then we'll need an
@@ -381,12 +371,10 @@ end
 function Actor:run(input)
 
 	local tool_request_list = { }
-	local input_data = nil
+	local input_data
 
-	if (input ~= nil) then
-		input_data = { { type = "text", text = input } }
-		self.log_file:write_json({ block = "input", input_str = input })
-	end
+	input_data = { { type = "text", text = input } }
+	self.log_file:write_json({ block = "input", input_str = input })
 
 --	-- TODO: log intermediary steps
 	local r, retrun = self:run_input(input_data, tool_request_list)
