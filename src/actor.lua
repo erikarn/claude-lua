@@ -54,6 +54,7 @@ function Actor:new(opts)
 	m.log_file = nil
 	m.tool_list = nil
 	m.response_callback = nil
+	m.max_tokens = nil
 
 	-- TODO: there's likely a lot more interesting API state
 	-- the claude API can implement; I'll need to tinker with
@@ -84,6 +85,12 @@ end
 --
 function Actor:set_tool_list(tool_list)
 	self.tool_list = tool_list
+end
+
+-- Set maximum tokens for processing
+--
+function Actor:set_max_tokens(max_tokens)
+	self.max_tokens = max_tokens
 end
 
 -- Explicitly set the actor uuid
@@ -201,7 +208,12 @@ function Actor:run_input(input_content, tool_request_list)
 		table.insert(messages, e)
 	end
 
-	table.insert(messages, { role = "user", content = input_content})
+	-- Handle /no/ input content being provided - useful for things such
+	-- as retrying input
+	--
+	if (input_content ~= nil) then
+		table.insert(messages, { role = "user", content = input_content})
+	end
 
 	-- XXX TODO: this is very spammy; we likely should persist this somewhere
 	-- separate to be able to restart things.
@@ -211,8 +223,14 @@ function Actor:run_input(input_content, tool_request_list)
 	local an_req = anthropic.create()
 	an_req:set_api_key(self.api_key)
 	an_req:set_log(self.log_file)
+	local opts = {}
+
+	if self.max_tokens ~= nil then
+		opts.max_tokens = self.max_tokens
+	end
+
 	local stream, err_state = an_req:stream_messages(messages,
-	    self.tool_list:get_tool_schema_list(), nil)
+	    self.tool_list:get_tool_schema_list(), opts)
 	if (stream == nil) then
 		local es = {}
 		if (err_state.content ~= nil) then
@@ -241,7 +259,13 @@ function Actor:run_input(input_content, tool_request_list)
 
 	local state = an_req:get_init_state()
 
-	table.insert(self.session_history, { role = "user", content = input_content })
+	-- Again, handle being called to retry the current conversation
+	-- state and message
+	--
+	if (input_content ~= nil) then
+		table.insert(self.session_history,
+		    { role = "user", content = input_content })
+	end
 
 	-- I'm assuming here the response is completely read in a call
 	-- to run_input().  If this isn't the case then we'll need an
@@ -357,11 +381,15 @@ end
 function Actor:run(input)
 
 	local tool_request_list = { }
+	local input_data = nil
 
-	self.log_file:write_json({ block = "input", input_str = input })
+	if (input ~= nil) then
+		input_data = { { type = "text", text = input } }
+		self.log_file:write_json({ block = "input", input_str = input })
+	end
+
 --	-- TODO: log intermediary steps
-	local r, retrun = self:run_input({ { type = "text", text = input } },
-	    tool_request_list)
+	local r, retrun = self:run_input(input_data, tool_request_list)
 
 	-- Error; kick to actor owner to handle
 	--
