@@ -141,9 +141,27 @@ local function run()
 					goto try_again
 				end
 
-				-- TODO: API timeout handling
+				-- API error handling - request timeout
+				if err.stop_reason == "api_error"
+				    and err.err_state.err_type == "request_timeout" then
+					print("[ERROR] API error; request timeout, retrying\n")
+					os.execute("sleep 5")
+					goto try_again
+				end
+
+				-- TODO: API error handling
+				if err.stop_reason == "api_error" then
+					print("[ERROR] API error; bailing\n")
+					print("*** stop reason: " .. json.encode(err))
+					break
+				end
 
 				-- TODO: API rate limit handling
+				if err.stop_reason == "api_rate_limit" then
+					print("[ERROR] rate limited, sleeping 30 seconds\n")
+					os.execute("sleep 5")
+					goto try_again
+				end
 
 				-- TODO: API specifically hitting iteration
 				-- limit and wanting a continuation (similar
