@@ -55,6 +55,14 @@ local function local_output(out)
 		-- Yes, it'd be nice if we could handle this as an overlay and
 		-- not trash partially written output.
 		print("\n[TOOL] " .. out.content)
+	elseif (out.type == "tokens") then
+		print(string.format("[TOKENS] input tokens = %d, output tokens = %d\n",
+		    out.input_tokens, out.output_tokens))
+	elseif (out.type == "state_done") then
+		-- TODO: this is not REALLY needed; the caller will get it
+		-- as part of the return and handle it appropriately
+		print(string.format("\n[done] reason = %s, type = %s\n",
+		    out.stop_reason, out.type))
 	else
 		print(string.format("[unknown type = '%s']: %s\n",
 		    out.type, json.encode(out)))
