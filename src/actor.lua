@@ -338,6 +338,52 @@ function Actor:run_input(input_content, tool_request_list)
 	return true, { stop_reason = state.stop_reason }
 end
 
+--
+-- Run the given tool list, return the tool list output to feed back
+-- into the model as input.
+--
+-- Returns true, nil if successful
+-- Returns false, err if unsuccessful
+-- TODO: define the err table if unsuccessful
+--
+function Actor:run_tool_list(tool_request_list)
+	local tl = {}
+
+	self.log_file:dlog("tools",
+	    "tool count: " .. #tool_request_list)
+	for _, v in ipairs(tool_request_list) do
+		self.log_file:dlog("tools", "tool name: " .. v.name)
+		local tool <close> = self.tool_list:lookup_and_create(v.name)
+		if tool == nil then
+			-- TODO: maybe make this an error print/log?
+			self.log_file:dlog("tools", "tool lookup failed")
+			table.insert(tl, {
+				type = "tool_result",
+				tool_use_id = v.id,
+				is_error = true,
+				content = "The requested tool doesn't exist!",
+			});
+		else
+--			print("created tool")
+			self.log_file:dlog("tools", "tool request: " .. json.encode(v))
+			self:output({ type = "tool_ui", name = v.name,
+			    content = tool:get_ui_label(v).content })
+			local tr = tool:run(v)
+			-- populate common info
+			tr.type = "tool_result"
+			tr.tool_use_id = v.id
+--			print("tool result:" .. tr.content)
+
+			-- log
+			self.log_file:dlog("tools", "tool response: " .. json.encode(tr))
+
+			-- insert into the request/response flow
+			table.insert(tl, tr)
+		end
+	end
+
+	return tl, nil
+end
 
 --
 -- API entry point to run the API/model over the given input.
@@ -452,42 +498,13 @@ function Actor:run(input)
 	-- and then send it over.
 	-- 
 	while (#tool_request_list > 0) do
-		local tl = {}
-		self.log_file:dlog("tools",
-		    "tool count: " .. #tool_request_list)
-		for _, v in ipairs(tool_request_list) do
-			self.log_file:dlog("tools", "tool name: " .. v.name)
-			local tool <close> = self.tool_list:lookup_and_create(v.name)
-			if tool == nil then
-				-- TODO: maybe make this an error print/log?
-				self.log_file:dlog("tools", "tool lookup failed")
-				table.insert(tl, {
-					type = "tool_result",
-					tool_use_id = v.id,
-					is_error = true,
-					content = "The requested tool doesn't exist!",
-				});
-			else
---				print("created tool")
-				self.log_file:dlog("tools", "tool request: " .. json.encode(v))
-				self:output({ type = "tool_ui", name = v.name,
-				    content = tool:get_ui_label(v).content })
-				local tr = tool:run(v)
-				-- populate common info
-				tr.type = "tool_result"
-				tr.tool_use_id = v.id
---				print("tool result:" .. tr.content)
-
-				-- log
-				self.log_file:dlog("tools", "tool response: " .. json.encode(tr))
-
-				-- insert into the request/response flow
-				table.insert(tl, tr)
-			end
-		end
-
+		-- Run the tool list
+		local tl = self:run_tool_list(tool_request_list)
+		-- The tool list has completed, blank the tool list
 		tool_request_list = {}
 
+		-- Run another pass of the model with the input being
+		-- the current tool results
 		local r, retrun = self:run_input(tl, tool_request_list)
 
 		-- Permanent error; kick to actor owner to handle
