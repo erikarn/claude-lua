@@ -114,11 +114,12 @@ local function run()
 		if input == nil then break end
 		input = input:match("^%s*(.-)%s*$")
 		if #input > 0 then
+			a:set_input(input, nil)
 ::try_again::
 			-- TODO: we should have callbacks for the
 			-- output data, right? rather than having it
 			-- print?
-			local ret, err = a:run(input)
+			local ret, err = a:run()
 
 			-- We hit a stop reason that requires handling
 			-- versus just end of input.
@@ -137,7 +138,13 @@ local function run()
 					--
 					print("[TOKENS] hit max tokens; bumping to 64k for now\n")
 					a:set_max_tokens(64000)
-					input = "Please continue."
+					-- TODO: I'm not sure if this is right; notably
+					-- will we ever see this happen when split
+					-- across a tool invocation?  It'll definitely
+					-- error out or miss the tooling updates
+					-- at this point.
+					--
+					a:set_input("Please continue.", nil)
 					goto try_again
 				end
 

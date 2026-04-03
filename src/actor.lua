@@ -56,6 +56,12 @@ function Actor:new(opts)
 	m.response_callback = nil
 	m.max_tokens = nil
 
+	-- Current API call state; used for retrying
+	m.current_state = {}
+	m.current_state.input = nil
+	m.current_state.tool_request_list = nil
+	m.current_state.stop_reason = nil
+
 	-- TODO: there's likely a lot more interesting API state
 	-- the claude API can implement; I'll need to tinker with
 	-- that once this is stood up.
@@ -385,6 +391,27 @@ function Actor:run_tool_list(tool_request_list)
 	return tl, nil
 end
 
+-- Set the input and optionally the tool request list state
+--
+-- This will reset the API call state to the given input/tool request list
+-- for subsequent calls to Actor:run() to run over.
+--
+-- TODO: this doesn't allow a tool response to be set as input,
+-- I'll tackle that later.
+--
+function Actor:set_input(input, tool_request_list)
+
+	self.log_file:write_json({ block = "input", input_str = self.current_state.input })
+
+	self.current_state.input = { { type = "text", text = input } }
+	if tool_request_list ~= nil then
+		self.current_state.tool_request_list = tool_request_list
+	else
+		self.current_state.tool_request_list = {}
+	end
+	self.current_state.stop_reason = nil
+end
+
 --
 -- API entry point to run the API/model over the given input.
 --
@@ -415,33 +442,11 @@ end
 -- is required, etc, etc.
 --
 
---
--- TODO: API errors here aren't restartable just yet.
---
--- Notably if I hit an API timeout or a rate limit and I have some
--- unfinished tooling requests/state in this loop / in the message history,
--- an API failure will mean all of that will get recalculated and re-added,
--- which will result in the Anthropic API returning a permanent failure.
---
--- In the previous iteration the run_input() routine handled retrying
--- from API rate limiting (and could have retried from API timeout) and
--- until that errored out, the current message history and tool state
--- would have been OK.  However, that is not the case anymore and thus
--- I must re-think how to split up the state here so that API calls
--- are either restartable from being part way through tooling invocation
--- and response, and / or be able to roll back the partially completed
--- state and just retry.
---
-function Actor:run(input)
-
-	local tool_request_list = { }
-	local input_data
-
-	input_data = { { type = "text", text = input } }
-	self.log_file:write_json({ block = "input", input_str = input })
-
+function Actor:run()
 --	-- TODO: log intermediary steps
-	local r, retrun = self:run_input(input_data, tool_request_list)
+	local r, retrun = self:run_input(self.current_state.input,
+	    self.current_state.tool_request_list)
+	self.current_state.stop_reason = retrun.stop_reason
 
 	-- Error; kick to actor owner to handle
 	--
@@ -459,53 +464,24 @@ function Actor:run(input)
 		return false, retrun
 	end
 
-	-- At this point an error is restartable - the caller can retry the
-	-- API call entirely, or if it got a response and max_tokens (or
-	-- whatever the "I've hit my internal iteration limit" response),
-	-- it can restart / continue appropriately.  See the chat below about
-	-- the last role being "user" or "assistant" in guessing what the
-	-- next ection should be.
-
-	-- TODO! However, once this tool request list loop is entered,
-	-- it'll do the tool request work; the successful call above
-	-- has added the tool requests to the message history, and
-	-- its expected that the next request will have the tool responses.
-	-- However if this call fails, the caller will retry with the input
-	-- again and won't have the tool invocation results - which
-	-- it needs to, as the tools have possibly gone and changed some state!
-	--
-	-- So, I'm going to need to think about how to store the intermediary
-	-- state here - whether the previous input line or the tool output -
-	-- and then allow THAT to be retried.  For API calls which fail
-	-- (eg API/HTTP errors, etc), and the last conversation turn was
-	-- "user", the response action needs to be "please retry with the last
-	-- state."
-	--
-	-- But for calls that succeed and the completion state was something
-	-- like the "I've hit my internal iteration limit" - ie, we get
-	-- some response and the last conversation turn was "assistant",
-	-- then we'll need to send a /new/ user response to continue things,
-	-- even if that is as simple as "please continue."
-	--
-	-- I need to sit down and look at all of this in a bit more detail
-	-- and plan it out.
-
-
 	-- Back to normal comment/work flow
 
 	-- If tool_request_list is not nil then we need to run the tool
 	-- requests, populate a user request with the tool responses,
 	-- and then send it over.
 	-- 
-	while (#tool_request_list > 0) do
+	while (#self.current_state.tool_request_list > 0) do
 		-- Run the tool list
-		local tl = self:run_tool_list(tool_request_list)
+		local tl = self:run_tool_list(self.current_state.tool_request_list)
 		-- The tool list has completed, blank the tool list
-		tool_request_list = {}
+		self.current_state.tool_request_list = {}
+		self.current_state.input = tl
 
 		-- Run another pass of the model with the input being
 		-- the current tool results
-		local r, retrun = self:run_input(tl, tool_request_list)
+		local r, retrun = self:run_input(self.current_state.input,
+		    self.current_state.tool_request_list)
+		self.current_state.stop_reason = retrun.stop_reason
 
 		-- Permanent error; kick to actor owner to handle
 		if r == false then
