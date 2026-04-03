@@ -110,6 +110,21 @@ function Anthropic:stream_messages(messages, tools, opts)
 	return nil, errstate
     end
 
+    local tf = math.random(10)
+    tf = 100 -- Don't trigger any failures
+    if (tf < 2) then
+        -- Simulate request timeout
+	local errstate = { code = 0, type = "request_timeout",
+	    content = json.encode({ type = "text", content = "Request timeout" })}
+	return nil, errstate
+    elseif (tf < 4) then
+	-- simulate 429 rate limiting
+	local errstate =
+	    { code = 429, content = json.encode({type = "error",
+	      error = { type = "rate_limit_error" } })}
+	return nil, errstate
+    end
+
     local status = tonumber(headers:get(":status"))
     if status ~= 200 then
 	local errstate = { code = status, type = "api_error", content = stream:get_body_as_string() }
