@@ -112,8 +112,7 @@ end
 function Tools:get_tool_schema_list()
 	local ts = {}
 	for tn, tc in pairs(self.tools) do
-		local t <close> = tc.create()
-		table.insert(ts, t:get_schema())
+		table.insert(ts, tc:get_schema())
 	end
 	return ts
 end
