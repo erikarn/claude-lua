@@ -63,6 +63,9 @@ local function local_output(out)
 		-- as part of the return and handle it appropriately
 		print(string.format("\n[done] reason = %s, type = %s\n",
 		    out.stop_reason, out.type))
+	elseif (out.type == "api_error") then
+		print(string.format("\n[API error] %s\n",
+		    json.encode(out)))
 	else
 		print(string.format("[unknown type = '%s']: %s\n",
 		    out.type, json.encode(out)))
