@@ -22,7 +22,6 @@ local uuid = require('uuid')
 local lfs = require('lfs')
 local clog = require('clog')
 local json = require('dkjson')
-local tools = require('tools')
 local config = require('config')
 
 -- Class table
@@ -53,6 +52,7 @@ function Actor:new(opts)
 	m.system_prompt = ""
 	m.log_file = nil
 	m.tool_list = nil
+	m.tool_cache = {}
 	m.response_callback = nil
 	m.max_tokens = nil
 
@@ -359,7 +359,16 @@ function Actor:run_tool_list(tool_request_list)
 	    "tool count: " .. #tool_request_list)
 	for _, v in ipairs(tool_request_list) do
 		self.log_file:dlog("tools", "tool name: " .. v.name)
-		local tool <close> = self.tool_list:lookup_and_create(v.name)
+
+		-- Check to see if we have a tool in the cache;
+		-- if we do then use that instance otherwise create
+		-- a new one.
+		--
+		if (self.tool_cache[v.name] == nil) then
+			self.tool_cache[v.name] =
+			    self.tool_list:lookup_and_create(v.name)
+		end
+		local tool = self.tool_cache[v.name]
 		if tool == nil then
 			-- TODO: maybe make this an error print/log?
 			self.log_file:dlog("tools", "tool lookup failed")
