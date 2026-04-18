@@ -134,6 +134,15 @@ end
 -- itself.
 --
 
+-- Add a message to the session history
+--
+-- This is persisted locally /and/ optionally written to the actor
+-- state log so it can be replayed later.
+function Actor:add_to_session_history(role, content)
+	table.insert(self.session_history,
+	    { role = "user", content = content })
+end
+
 -- Set the callback for receving payloads / responses from the run()
 -- routine.
 --
@@ -261,8 +270,7 @@ function Actor:run_input(input_content, tool_request_list)
 
 	local state = an_req:get_init_state()
 
-	table.insert(self.session_history,
-	    { role = "user", content = input_content })
+	self:add_to_session_history("user", input_content)
 
 	-- I'm assuming here the response is completely read in a call
 	-- to run_input().  If this isn't the case then we'll need an
@@ -333,7 +341,7 @@ function Actor:run_input(input_content, tool_request_list)
 		    { type = "tool_use", id = v.id, name = v.name, input = v.input })
 	end
 
-	table.insert(self.session_history, { role = "assistant", content = content_list })
+	self:add_to_session_history("assistant", content_list)
 
 	self.log_file:write_json({ block = "response", content = response })
 	self.log_file:write_json({ block = "stats", input_tokens = state.input_tokens, output_tokens = state.output_tokens })
