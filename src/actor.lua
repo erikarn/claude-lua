@@ -20,7 +20,6 @@
 local anthropic = require("anthropic")
 local uuid = require('uuid')
 local lfs = require('lfs')
-local clog = require('clog')
 local json = require('dkjson')
 local config = require('config')
 
@@ -251,10 +250,12 @@ function Actor:run_input(input_content, tool_request_list)
 
 		if (err_state.code == 429 and es.type == "error"
 		    and es.error.type == "rate_limit_error") then
+			self:output({ type = "rate_limit_error", err_state = es})
 			return false, { stop_reason = "api_rate_limit",
 			    err_state = es }
 		end
 
+		self:output({ type = "api_error", err_state = es})
 		return false, { stop_reason = "api_error", err_state = es }
 	end
 
