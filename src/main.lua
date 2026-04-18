@@ -25,7 +25,7 @@ tool_list:register("str_replace_based_edit_tool", require('tools/text_editor'))
 tool_list:register("bash", require('tools/bash'))
 
 local function open_log_file(session_uuid)
-	local bn = os.getenv("HOME") .. "/.claude_cli"
+	local bn = os.getenv("HOME") .. "/.claude_cli/logs"
 	local dn = bn .. "/" .. session_uuid
 	local fn = dn .. "/" .. "session.txt"
 
