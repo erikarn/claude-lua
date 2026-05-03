@@ -9,6 +9,7 @@ local json = require('dkjson')
 local tools = require('tools')
 local config = require('config')
 local actor = require('actor')
+local getopt = require('posix.unistd').getopt
 
 -- Load configuration info early
 --
@@ -72,7 +73,7 @@ local function local_output(out)
 	end
 end
 
-local function run()
+local function run(args)
 
 	-- Create a new actor; will configure the various parameters afterwards
 	--
@@ -82,7 +83,13 @@ local function run()
 	-- establish a way to continue a global session / actor session.
 	--
 	uuid.set_rng(set_rng_fn)
-	local session_uuid = uuid()
+
+	local session_uuid
+	if (args.session == nil) then
+		session_uuid = uuid()
+	else
+		session_uuid = args.session
+	end
 	print("Session: " .. session_uuid)
 
 	-- For now actor uuid == session uuid; remember at some point I
@@ -183,10 +190,26 @@ local function run()
 		end
 		log_file:flush()
 		print("====\n")
+
+		-- TODO: Persist the actor state
 	end
+
+	-- TODO: Persist the actor state
 
 	log_file:close()
 end
 
-run()
+function main()
+	local session_id = nil
 
+	for r, optarg, optind in getopt(arg, 's:') do
+		if r == 's' then
+			session_id = optarg
+		end
+	end
+
+	run({ session = session_id } )
+end
+
+
+main()
