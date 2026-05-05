@@ -11,11 +11,23 @@ general flow
 
 * (done) add initial caching so i don't blow through tokens so fast
 
-* add logic to retry if i hit pause_run, max_tokens, etc.
+* (done) add logic to retry if i hit pause_run, max_tokens, etc.
 
 * notably for max_tokens i likely need to ask if the token limit can be
   bumped up before continuing, as 1024 output tokens isn't enough for
   code generation.
+
+* need to decode the context window error, eg
+
+./fea2f697-0a4c-4f64-9a12-52ed81ce6890/session.txt:{"type":"debug","content":{"text":"{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"input length and `max_tokens` exceed context limit: 140713 + 64000 > 200000, decrease input length or `max_tokens` and try again\"},\"request_id\":\"req_011CaijFW9txnnT45pZ4cJML\"}","section":"conversation"}},
+
+* .. and read the docs on how to make it configurable so I can test much
+  smaller context windows?
+
+* handle out of credits, eg
+
+./012f15b5-ab73-4eba-b3f5-57beee0421bf/session.txt:{"type":"debug","content":{"section":"conversation","text":"{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011Cairp3tKfTAdcjgdcvyT5\"}"}},
+
 
 tool handling
 =============
