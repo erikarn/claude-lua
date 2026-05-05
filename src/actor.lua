@@ -140,7 +140,7 @@ end
 -- state log so it can be replayed later.
 function Actor:add_to_session_history(role, content)
 	table.insert(self.session_history,
-	    { role = "user", content = content })
+	    { role = role, content = content })
 end
 
 -- Set the callback for receving payloads / responses from the run()
