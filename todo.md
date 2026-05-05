@@ -28,6 +28,15 @@ general flow
 
 ./012f15b5-ab73-4eba-b3f5-57beee0421bf/session.txt:{"type":"debug","content":{"section":"conversation","text":"{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011Cairp3tKfTAdcjgdcvyT5\"}"}},
 
+* add support for populating the memory context when starting/restarting
+  an existing context, rather than having to retype it out - this isn't the
+  memory context API, this is the hints to give it at session start/restart.
+
+* add support for the /memory API/ as well
+
+* add support for querying it to compress its current context window into
+  a summary, add my own instructions before/after it, so the session can be
+  restarted.
 
 tool handling
 =============
