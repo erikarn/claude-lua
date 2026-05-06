@@ -188,7 +188,9 @@ function TextEditor:cmd_view_file(req, path)
 		if start_l < 1 or start_l > #lines then
 			return {
 			    is_error = true,
-			    content = string.format("error: start_line %d out of range (file has %d lines)", start_line, #lines),
+			    content = string.format(
+			        "error: start_line %d out of range (file has %d lines)",
+			        start_l, #lines),
 			}
 		end
 		end_l = math.min(end_l, #lines)
