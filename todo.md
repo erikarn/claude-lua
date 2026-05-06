@@ -46,6 +46,20 @@ stack traceback:
   ./tools/text_editor.lua:41: in function 'tools/text_editor.sanitize_path'
   ./tools/text_editor.lua:274: in function 'tools/text_editor.cmd_str_replace'
 
+* also
+
+[TOOL] Calling view on /home/adrian/sandbox/68020/CMakeLists.txt
+lua54: ./tools/text_editor.lua:191: bad argument #2 to 'format' (number expected, got nil)
+stack traceback:
+  [C]: in function 'string.format'
+  ./tools/text_editor.lua:191: in function 'tools/text_editor.cmd_view_file'
+
+And the debug log from this:
+
+{"content":{"section":"tools","text":"tool count: 1"},"type":"debug"},
+{"content":{"section":"tools","text":"tool name: str_replace_based_edit_tool"},"type":"debug"},
+{"content":{"section":"tools","text":"tool request: {\"input\":{\"command\":\"view\",\"path\":\"/home/adrian/sandbox/68020/CMakeLists.txt\",\"view_range\":[80,120]},\"name\":\"str_replace_based_edit_tool\",\"id\":\"toolu_01DmEBDamMkqBGqWWHQeV3Pf\"}"},"type":"debug"},
+
 
 tool handling
 =============
