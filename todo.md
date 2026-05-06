@@ -38,6 +38,15 @@ general flow
   a summary, add my own instructions before/after it, so the session can be
   restarted.
 
+* be better-er with badly called tools, eg
+
+[TOOL] Calling str_replace on <missing path>
+lua54: ./tools/text_editor.lua:41: attempt to index a nil value (local 'path')
+stack traceback:
+  ./tools/text_editor.lua:41: in function 'tools/text_editor.sanitize_path'
+  ./tools/text_editor.lua:274: in function 'tools/text_editor.cmd_str_replace'
+
+
 tool handling
 =============
 
@@ -47,7 +56,7 @@ tool handling
   function, so i don't have to call create() first (which for the bash
   tool is spawning the program, sigh.)
 
-* make a persistent tool cache class that the main loop (and later
+* (done) make a persistent tool cache class that the main loop (and later
   an agent) will use - the bash tool needs to be persistent and not
   spawn a shell each invocation (not just for efficiency, but to
   persist state like current dir, environment variables, etc.)
@@ -56,7 +65,7 @@ tool handling
   class instances - again especially important for bash, which i want
   to make sure explicitly tears down and frees the process/pipes.
 
-* bash - don't create the bash instance upon object creation - when
+* (done) bash - don't create the bash instance upon object creation - when
   the first request is made, fail it so the AI controller knows it
   needs to 'restart' the bash session.
 
