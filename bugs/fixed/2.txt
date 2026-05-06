@@ -14,3 +14,15 @@ And the debug log from this:
 eLists.txt\",\"view_range\":[80,120]},\"name\":\"str_replace_based_edit_tool\",\"id\":\"toolu_01DmEBDamMkqBGqWWHQeV3Pf\"}"},"ty
 pe":"debug"},
 
+
+## Fixed
+
+Fixed in commit f1018beb2e7e81569d6d84cc04cbc7c823a6e506
+
+
+> commit f1018beb2e7e81569d6d84cc04cbc7c823a6e506
+> Author: Adrian Chadd <adrian@FreeBSD.org>
+> Date:   Wed May 6 08:41:15 2026 -0700
+>
+>    text_editor: fix bug 2 - invalid variable
+
