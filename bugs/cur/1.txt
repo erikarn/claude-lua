@@ -1,0 +1,9 @@
+# Bug 1 - [TOOL] Calling str_replace on <missing path>
+
+[TOOL] Calling str_replace on <missing path>
+lua54: ./tools/text_editor.lua:41: attempt to index a nil value (local 'path')
+stack traceback:
+  ./tools/text_editor.lua:41: in function 'tools/text_editor.sanitize_path'
+  ./tools/text_editor.lua:274: in function 'tools/text_editor.cmd_str_replace'
+
+
