@@ -1,0 +1,16 @@
+# Bug 3 - maximum context limit reached
+
+## Summary
+
+I'm hitting this:
+
+> [API error] {"type":"api_error","err_state":{"type":"error","response_code":400,"err_type":"api_error","error":{"type":"invalid_request_error","message":"input length and `max_tokens` exceed context limit: 141668 + 64000 > 200000, decrease input length or `max_tokens` and try again"},"request_id":"req_011CanKBSzFqHqYY4npLab3g"}}
+
+* I need to go and figure out how to track the context window as
+  I'm working and then start compacting it.
+
+* I also need to figure out what to do when I hit this error,
+  as it can't be treated as a fatal program error, but it
+  also can't be stuck.
+
+
