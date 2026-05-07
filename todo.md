@@ -46,14 +46,6 @@ stack traceback:
   ./tools/text_editor.lua:41: in function 'tools/text_editor.sanitize_path'
   ./tools/text_editor.lua:274: in function 'tools/text_editor.cmd_str_replace'
 
-* also
-
-[TOOL] Calling view on /home/adrian/sandbox/68020/CMakeLists.txt
-lua54: ./tools/text_editor.lua:191: bad argument #2 to 'format' (number expected, got nil)
-stack traceback:
-  [C]: in function 'string.format'
-  ./tools/text_editor.lua:191: in function 'tools/text_editor.cmd_view_file'
-
 And the debug log from this:
 
 {"content":{"section":"tools","text":"tool count: 1"},"type":"debug"},
